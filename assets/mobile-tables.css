@@ -1,0 +1,72 @@
+@media (max-width: 640px) {
+  .page-client .section .table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .page-client .section table {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .page-client .section thead { display: none; }
+  .page-client .section tbody {
+    display: grid;
+    gap: 11px;
+  }
+  .page-client .section tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 12px 14px;
+    padding: 15px;
+    border: 1px solid #e0e7ef;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 5px 16px rgba(16,38,62,.045);
+  }
+  .page-client .section tbody tr:hover { background: #fff; }
+  .page-client .section tbody td {
+    display: block;
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    color: #273d54;
+    font-size: 13px;
+  }
+  .page-client .section tbody td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    color: #8a98aa;
+    font-size: 9px;
+    font-weight: 850;
+    letter-spacing: .06em;
+  }
+  .page-client .section tbody td[data-label="結算週期"],
+  .page-client .section tbody td[data-label="投資案"] {
+    grid-column: 1 / -1;
+  }
+  .page-client .section tbody td[data-label="投資案"] strong {
+    font-size: 14px;
+  }
+  .page-client .section tbody td[data-label="本週收益"] {
+    padding: 9px 10px;
+    border-radius: 9px;
+    background: #eef9f5;
+  }
+  .page-client .section tbody td[data-label="本週收益"]::before { color: #4c8b77; }
+  .page-client .section tbody td[data-label="狀態"] { align-self: end; }
+  .page-client .section tbody tr:has(td.empty) {
+    display: block;
+    padding: 28px 16px;
+  }
+  .page-client .section tbody td.empty {
+    text-align: center;
+    color: #8b99aa;
+  }
+  .page-client .section tbody td.empty::before { display: none; }
+}
