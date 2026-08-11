@@ -1,13 +1,15 @@
 // Shared visual theme and page context.
 (() => {
-  const href = 'assets/theme-v2.css?v=20260811';
-  if (!document.querySelector('link[data-dashboard-theme]')) {
+  const loadStyle = (href, key) => {
+    if (document.querySelector(`link[data-dashboard-style="${key}"]`)) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = href;
-    link.dataset.dashboardTheme = 'v2';
+    link.dataset.dashboardStyle = key;
     document.head.appendChild(link);
-  }
+  };
+  loadStyle('assets/theme-v2.css?v=20260811', 'theme-v2');
+  loadStyle('assets/dashboard-insights.css?v=20260811', 'insights');
   document.body?.classList.add(/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash) ? 'page-admin' : 'page-client');
 })();
 
@@ -27,7 +29,7 @@ window.UI = (() => {
   return {money,date,pct,esc,toast,statusPill};
 })();
 
-// Load optional safety extensions without changing the base GitHub Pages structure.
+// Load optional safety and UX extensions without changing the base GitHub Pages structure.
 (() => {
   const load = src => {
     if (document.querySelector(`script[data-extension="${src}"]`)) return;
@@ -38,6 +40,7 @@ window.UI = (() => {
     document.head.appendChild(s);
   };
   load('assets/hardening.js');
+  load('assets/dashboard-insights.js');
   if (/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash)) {
     load('assets/admin-batches.js');
     load('assets/import-validator.js');
