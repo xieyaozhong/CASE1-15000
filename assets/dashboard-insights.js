@@ -2,7 +2,7 @@
   let rendering = false;
 
   function waitForApp() {
-    if (!window.DB || !window.UI) { setTimeout(waitForApp, 80); return; }
+    if (!window.DB || !window.UI || !DB.__hardeningLoaded) { setTimeout(waitForApp, 80); return; }
     render();
     setTimeout(render, 650);
   }
@@ -131,7 +131,7 @@
   }
 
   async function render() {
-    if (rendering || !window.DB || !window.UI) return;
+    if (rendering || !window.DB || !window.UI || !DB.__hardeningLoaded) return;
     rendering = true;
     try {
       if (pageIsAdmin()) {
