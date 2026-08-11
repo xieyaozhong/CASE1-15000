@@ -11,8 +11,12 @@
   const isAdmin = /\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash);
   loadStyle('assets/theme-v2.css?v=20260811', 'theme-v2');
   loadStyle('assets/dashboard-insights.css?v=20260811', 'insights');
-  if (isAdmin) loadStyle('assets/admin-workspace.css?v=20260811', 'admin-workspace');
-  else loadStyle('assets/mobile-tables.css?v=20260811', 'mobile-tables');
+  if (isAdmin) {
+    loadStyle('assets/admin-workspace.css?v=20260811', 'admin-workspace');
+    loadStyle('assets/operations-v4.css?v=20260811', 'operations-v4');
+  } else {
+    loadStyle('assets/mobile-tables.css?v=20260811', 'mobile-tables');
+  }
   document.body?.classList.add(isAdmin ? 'page-admin' : 'page-client');
 })();
 
@@ -50,6 +54,7 @@ window.UI = (() => {
     load('assets/import-validator.js');
     load('assets/system-health.js');
     load('assets/admin-workspace.js');
+    load('assets/operations-v4.js');
   } else {
     load('assets/mobile-tables.js');
   }
