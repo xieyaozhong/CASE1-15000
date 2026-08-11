@@ -10,6 +10,9 @@
   };
   loadStyle('assets/theme-v2.css?v=20260811', 'theme-v2');
   loadStyle('assets/dashboard-insights.css?v=20260811', 'insights');
+  if (/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash)) {
+    loadStyle('assets/admin-workspace.css?v=20260811', 'admin-workspace');
+  }
   document.body?.classList.add(/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash) ? 'page-admin' : 'page-client');
 })();
 
@@ -45,5 +48,6 @@ window.UI = (() => {
     load('assets/admin-batches.js');
     load('assets/import-validator.js');
     load('assets/system-health.js');
+    load('assets/admin-workspace.js');
   }
 })();
