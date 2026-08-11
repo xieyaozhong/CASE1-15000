@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1f3a" />
+  <title>週結算中心｜客戶端</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="./">
+      <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18V9m6 9V5m6 13v-7m4 7H2"/></svg></span>
+      <span>週結算中心</span>
+    </a>
+    <div class="top-actions">
+      <span id="modeChip" class="status-chip demo"><span class="status-dot"></span>展示模式</span>
+      <a class="btn btn-soft btn-sm hide-mobile" href="admin.html">管理後台</a>
+      <button id="logoutBtn" class="btn btn-soft btn-sm" style="display:none">登出</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="loginView" class="card login-card" style="display:none">
+      <h1>登入收益帳戶</h1>
+      <p>登入後只會顯示屬於你的投資與每週收益資料。</p>
+      <form id="loginForm">
+        <div class="field"><label>Email</label><input class="input" type="email" name="email" required autocomplete="email"></div>
+        <div class="field" style="margin-top:12px"><label>密碼</label><input class="input" type="password" name="password" required minlength="6" autocomplete="current-password"></div>
+        <div class="form-actions"><button type="button" id="signupBtn" class="btn btn-soft">建立帳號</button><button class="btn btn-primary">登入</button></div>
+      </form>
+      <div class="notice">第一次使用時，請使用管理員登記的相同 Email 註冊；登入後系統會自動綁定你的投資人資料。</div>
+    </section>
+
+    <section id="appView" style="display:none">
+      <div class="hero">
+        <div><h1 id="welcome">我的週結算</h1><p>每週收益、投入金額與撥款狀態集中查看。</p></div>
+        <div class="toolbar"><button id="exportBtn" class="btn btn-soft">匯出明細 CSV</button></div>
+      </div>
+
+      <div class="grid kpi-grid">
+        <article class="card kpi"><span class="kpi-icon">↗</span><div class="kpi-label">本週收益</div><div id="kpiWeek" class="kpi-value">0</div><div class="kpi-meta">本週已產生的收益</div></article>
+        <article class="card kpi"><span class="kpi-icon">Σ</span><div class="kpi-label">累計收益</div><div id="kpiProfit" class="kpi-value">0</div><div class="kpi-meta">系統內全部週結算</div></article>
+        <article class="card kpi"><span class="kpi-icon">◎</span><div class="kpi-label">目前投入</div><div id="kpiInvested" class="kpi-value">0</div><div class="kpi-meta">進行中投資案合計</div></article>
+        <article class="card kpi"><span class="kpi-icon">✓</span><div class="kpi-label">累計已撥款</div><div id="kpiPaid" class="kpi-value">0</div><div class="kpi-meta">含歷史匯入撥款</div></article>
+      </div>
+
+      <section class="section">
+        <div class="section-head"><div><h2>每週收益明細</h2><p>依週次與投資案顯示實際分配結果。</p></div><select id="statusFilter"><option value="">全部狀態</option><option value="paid">已撥款</option><option value="pending">待撥款</option></select></div>
+        <div class="card table-wrap"><table><thead><tr><th>結算週期</th><th>投資案</th><th>參與金額</th><th>本週收益</th><th>週報酬率</th><th>狀態</th><th>撥款日</th></tr></thead><tbody id="settlementBody"></tbody></table></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><div><h2>目前參與投資案</h2><p>此處只顯示你的參與資訊。</p></div></div>
+        <div class="card table-wrap"><table><thead><tr><th>投資案</th><th>案源</th><th>案件金額</th><th>我的參與</th><th>起始日</th><th>狀態</th></tr></thead><tbody id="projectBody"></tbody></table></div>
+      </section>
+    </section>
+  </main>
+</div>
+<script src="assets/common.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
