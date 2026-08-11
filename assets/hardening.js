@@ -96,6 +96,17 @@
       };
     };
 
+    DB.adminAudit = async function(limit = 40) {
+      if (!LIVE) return [];
+      const { data, error } = await DB.client
+        .from('audit_logs')
+        .select('id,actor_user_id,action,entity_type,entity_id,details,created_at')
+        .order('created_at', { ascending: false })
+        .limit(Math.max(1, Math.min(Number(limit) || 40, 200)));
+      if (error) throw error;
+      return data || [];
+    };
+
     changed();
   }
 
