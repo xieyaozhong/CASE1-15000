@@ -43,5 +43,6 @@
     const rows=[['週起始','週結束','投資案','參與金額','收益','撥款狀態','撥款日'],...(snapshot?.settlements||[]).map(s=>[s.batch?.week_start||'',s.batch?.week_end||'',s.project?.name||'',s.invested_amount,s.profit_amount,s.payout_status,s.paid_at||''])];
     const csv='\ufeff'+rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n'); const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`收益明細_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
   });
+  window.addEventListener('settlement-data-changed',()=>load());
   load();
 })();
