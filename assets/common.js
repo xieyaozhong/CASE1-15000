@@ -13,3 +13,19 @@ window.UI = (() => {
   };
   return {money,date,pct,esc,toast,statusPill};
 })();
+
+// Load optional safety extensions without changing the base GitHub Pages structure.
+(() => {
+  const load = src => {
+    if (document.querySelector(`script[data-extension="${src}"]`)) return;
+    const s = document.createElement('script');
+    s.src = src;
+    s.defer = true;
+    s.dataset.extension = src;
+    document.head.appendChild(s);
+  };
+  load('assets/hardening.js');
+  if (/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash)) {
+    load('assets/admin-batches.js');
+  }
+})();
