@@ -14,6 +14,7 @@
   if (isAdmin) {
     loadStyle('assets/admin-workspace.css?v=20260811', 'admin-workspace');
     loadStyle('assets/operations-v4.css?v=20260811', 'operations-v4');
+    loadStyle('assets/operations-v4-compat.css?v=20260811', 'operations-v4-compat');
   } else {
     loadStyle('assets/mobile-tables.css?v=20260811', 'mobile-tables');
   }
@@ -56,6 +57,7 @@ window.UI = (() => {
     load('assets/admin-workspace.js');
     load('assets/operations-v4.js');
     load('assets/operations-v4-safe-close.js');
+    load('assets/operations-v4-compat.js');
   } else {
     load('assets/mobile-tables.js');
   }
