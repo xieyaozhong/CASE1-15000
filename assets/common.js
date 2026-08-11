@@ -27,5 +27,6 @@ window.UI = (() => {
   load('assets/hardening.js');
   if (/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash)) {
     load('assets/admin-batches.js');
+    load('assets/import-validator.js');
   }
 })();
