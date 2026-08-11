@@ -8,12 +8,12 @@
     link.dataset.dashboardStyle = key;
     document.head.appendChild(link);
   };
+  const isAdmin = /\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash);
   loadStyle('assets/theme-v2.css?v=20260811', 'theme-v2');
   loadStyle('assets/dashboard-insights.css?v=20260811', 'insights');
-  if (/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash)) {
-    loadStyle('assets/admin-workspace.css?v=20260811', 'admin-workspace');
-  }
-  document.body?.classList.add(/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash) ? 'page-admin' : 'page-client');
+  if (isAdmin) loadStyle('assets/admin-workspace.css?v=20260811', 'admin-workspace');
+  else loadStyle('assets/mobile-tables.css?v=20260811', 'mobile-tables');
+  document.body?.classList.add(isAdmin ? 'page-admin' : 'page-client');
 })();
 
 window.UI = (() => {
@@ -42,12 +42,15 @@ window.UI = (() => {
     s.dataset.extension = src;
     document.head.appendChild(s);
   };
+  const isAdmin = /\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash);
   load('assets/hardening.js');
   load('assets/dashboard-insights.js');
-  if (/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash)) {
+  if (isAdmin) {
     load('assets/admin-batches.js');
     load('assets/import-validator.js');
     load('assets/system-health.js');
     load('assets/admin-workspace.js');
+  } else {
+    load('assets/mobile-tables.js');
   }
 })();
