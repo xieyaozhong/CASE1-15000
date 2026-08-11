@@ -1,0 +1,8 @@
+.v4-edit-head,
+.v4-edit-cell {
+  width: 1%;
+  min-width: 72px;
+  text-align: right;
+  white-space: nowrap;
+}
+.v4-edit-cell .v4-row-edit { margin-left: 0; }
