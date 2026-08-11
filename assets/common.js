@@ -1,3 +1,16 @@
+// Shared visual theme and page context.
+(() => {
+  const href = 'assets/theme-v2.css?v=20260811';
+  if (!document.querySelector('link[data-dashboard-theme]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.dataset.dashboardTheme = 'v2';
+    document.head.appendChild(link);
+  }
+  document.body?.classList.add(/\/admin\.html(?:$|[?#])/.test(location.pathname + location.search + location.hash) ? 'page-admin' : 'page-client');
+})();
+
 window.UI = (() => {
   const money = v => new Intl.NumberFormat('zh-TW', {maximumFractionDigits: 2}).format(Number(v||0));
   const date = v => v ? new Intl.DateTimeFormat('zh-TW',{year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(v)) : '—';
