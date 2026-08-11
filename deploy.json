@@ -1,13 +1,14 @@
 {
-  "version": "v4.0.0",
-  "deployed_at": "2026-08-11T16:59:00+08:00",
+  "version": "v4.0.1",
+  "deployed_at": "2026-08-11T17:07:52+08:00",
   "source": "main",
   "target": "github-pages",
   "features": [
-    "project-edit-and-close",
-    "investor-edit",
+    "project-edit-and-safe-close",
+    "investor-edit-hardening",
     "weekly-payout-quick-select",
     "report-export-center",
-    "settlement-workflow-redesign"
+    "settlement-workflow-redesign",
+    "v3-v4-table-compatibility"
   ]
 }
