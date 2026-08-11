@@ -55,6 +55,7 @@ window.UI = (() => {
     load('assets/system-health.js');
     load('assets/admin-workspace.js');
     load('assets/operations-v4.js');
+    load('assets/operations-v4-safe-close.js');
   } else {
     load('assets/mobile-tables.js');
   }
