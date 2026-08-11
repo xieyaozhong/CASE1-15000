@@ -57,6 +57,7 @@ window.UI = (() => {
     load('assets/admin-workspace.js');
     load('assets/operations-v4.js');
     load('assets/operations-v4-safe-close.js');
+    load('assets/operations-v4-data-hardening.js');
     load('assets/operations-v4-compat.js');
   } else {
     load('assets/mobile-tables.js');
