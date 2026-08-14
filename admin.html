@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="assets/local-manager.css">
   <script defer src="assets/vendor/xlsx.full.min.js"></script>
   <script defer src="assets/settlement-core.js"></script>
+  <script defer src="assets/import-autofill.js"></script>
   <script defer src="assets/local-manager-db.js"></script>
   <script defer src="assets/local-manager.js"></script>
 </head>
@@ -191,7 +192,7 @@
                 <div><h2>Excel 自動匯入</h2><p>標準格式是一列一筆投資；系統會自動建立不存在的投資人與投資案。</p></div>
                 <button id="downloadTemplateBtn" class="btn btn-soft" type="button">下載 Excel 範本</button>
               </div>
-              <div class="notice">必要欄位：投資人名、投資案名、投資金額、開始時間、持續時間、投資利率、投資淨收益。持續時間可寫「6個月」或「180天」；純數字預設為月。</div>
+              <div class="notice">系統會自動補齊有可靠依據的空白欄位，並在預覽以橘色標示。無法安全推斷的投資人、案名或金額仍會提示修正，不會自行猜測。</div>
               <label id="dropzone" class="file-drop manager-dropzone" for="xlsxInput">
                 <span class="drop-icon" aria-hidden="true">⇧</span>
                 <strong>拖曳 Excel 到這裡，或點擊選擇檔案</strong>

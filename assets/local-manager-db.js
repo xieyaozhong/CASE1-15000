@@ -213,7 +213,9 @@
         item.start_date === value.start_date &&
         Number(item.amount) === Number(value.amount) &&
         Number(item.duration_value) === Number(value.duration_value) &&
-        item.duration_unit === value.duration_unit
+        item.duration_unit === value.duration_unit &&
+        Number(item.interest_rate) === Number(value.interest_rate) &&
+        Number(item.net_profit) === Number(value.net_profit)
       );
     }
 
