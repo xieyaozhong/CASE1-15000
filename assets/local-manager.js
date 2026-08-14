@@ -3,6 +3,7 @@
 
   const DB = window.LocalInvestmentDB;
   const Core = window.SettlementCore;
+  const Autofill = window.ImportAutofill;
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
   const moneyFormat = new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2 });
@@ -477,6 +478,7 @@
     amount: ['投資金額','投入金額','本金','principal','amount'],
     start_date: ['開始時間','開始日期','起始日','投資日','startdate','start'],
     duration_value: ['持續時間','持續天數','持續月數','期間','duration','durationdays','durationmonths'],
+    maturity_date: ['到期日','到期時間','結束日期','結束時間','maturitydate','enddate'],
     interest_rate: ['投資利率','利率','合約利率','interestrate','rate'],
     net_profit: ['投資淨收益','淨收益','淨獲利','投資獲利','netprofit','profit'],
     note: ['備註','說明','note','memo']
@@ -527,73 +529,129 @@
     return typeof value === 'number' && cell && /%/.test(String(cell.z || '')) ? parsed * 100 : parsed;
   }
 
+  const mergeFillFields = new Set(['investor_name','project_name','start_date','maturity_date','duration_value','interest_rate']);
+
+  function readImportValue(chosen, row, rowIndex, field) {
+    const columnIndex = chosen.map[field];
+    if (columnIndex == null) return { value: '', cell: null, merged: false };
+    const cell = chosen.sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })] || null;
+    const direct = row[columnIndex];
+    if (!Autofill.isMissing(direct) || !mergeFillFields.has(field)) return { value: direct, cell, merged: false };
+    const merge = (chosen.sheet['!merges'] || []).find(range =>
+      range.s.c === columnIndex && range.e.c === columnIndex && rowIndex >= range.s.r && rowIndex <= range.e.r
+    );
+    if (!merge) return { value: direct, cell, merged: false };
+    const sourceCell = chosen.sheet[XLSX.utils.encode_cell(merge.s)] || null;
+    if (!sourceCell || Autofill.isMissing(sourceCell.v)) return { value: direct, cell, merged: false };
+    return { value: sourceCell.v, cell: sourceCell, merged: true };
+  }
+
+  function importAutofillValue(item) {
+    if (item.field === 'start_date' || item.field === 'maturity_date') return displayDate(item.value);
+    if (item.field === 'duration_value') return `${number(item.value)} ${item.duration_unit === 'day' ? '天' : '個月'}`;
+    if (item.field === 'interest_rate') return pct(item.value);
+    if (item.field === 'net_profit') return money(item.value);
+    return String(item.value ?? '');
+  }
+
+  function renderImportCell(row, field, displayValue) {
+    const fill = (row._autofills || []).find(item => item.field === field);
+    return `<td${fill ? ' class="is-autofilled"' : ''}>${displayValue}${fill ? `<span class="autofill-badge">已補齊</span><small class="autofill-reason">${esc(fill.reason)}</small>` : ''}</td>`;
+  }
+
   async function parseWorkbook(file) {
     if (!window.XLSX) throw new Error('Excel 元件未載入，請確認 assets/vendor/xlsx.full.min.js 存在。');
+    if (!Autofill) throw new Error('自動補齊元件未載入，請重新整理後再試。');
     const workbook = XLSX.read(await file.arrayBuffer(), { cellDates: true, cellNF: true });
     let chosen = null;
-    const required = ['investor_name','project_name','amount','start_date','duration_value','interest_rate','net_profit'];
+    const recognized = Object.keys(headerAliases);
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
       for (let rowIndex = 0; rowIndex < Math.min(rows.length, 20); rowIndex++) {
         const map = columnMap(rows[rowIndex]);
-        const score = required.filter(field => map[field] != null).length;
+        const score = recognized.filter(field => map[field] != null).length;
         if (!chosen || score > chosen.score) chosen = { sheetName, sheet, rows, headerIndex: rowIndex, map, score };
-        if (score === required.length) break;
       }
-      if (chosen?.score === required.length) break;
     }
     if (!chosen) throw new Error('Excel 沒有可讀取的工作表。');
-    const missing = required.filter(field => chosen.map[field] == null);
-    if (missing.length) {
-      const labels = {investor_name:'投資人名',project_name:'投資案名',amount:'投資金額',start_date:'開始時間',duration_value:'持續時間',interest_rate:'投資利率',net_profit:'投資淨收益'};
-      throw new Error(`缺少必要欄位：${missing.map(field => labels[field]).join('、')}。請下載範本確認格式。`);
-    }
+    const headerIssues = Autofill.headerIssues(chosen.map);
+    if (headerIssues.length) throw new Error(`缺少無法自動推斷的欄位：${headerIssues.join('、')}。請下載範本確認格式。`);
 
-    const valid = [], errors = [], duplicates = [];
+    const valid = [], errors = [], duplicates = [], autofills = [];
     const seen = new Set();
     const header = chosen.rows[chosen.headerIndex];
+    let carry = Autofill.emptyCarry();
     for (let index = chosen.headerIndex + 1; index < chosen.rows.length; index++) {
       const row = chosen.rows[index];
-      if (!row.some(value => String(value ?? '').trim() !== '')) continue;
-      const valueAt = field => row[chosen.map[field]];
-      const duration = parseDuration(valueAt('duration_value'), header[chosen.map.duration_value]);
-      const rateCell = chosen.sheet[XLSX.utils.encode_cell({ r: index, c: chosen.map.interest_rate })];
-      const input = {
-        investor_name: String(valueAt('investor_name') || '').trim(),
-        project_name: String(valueAt('project_name') || '').trim(),
-        amount: numeric(valueAt('amount')),
-        start_date: excelDate(valueAt('start_date')),
+      if (!row.some(value => !Autofill.isMissing(value))) { carry = Autofill.emptyCarry(); continue; }
+      const cells = Object.fromEntries(recognized.map(field => [field, readImportValue(chosen, row, index, field)]));
+      const duration = parseDuration(cells.duration_value.value, chosen.map.duration_value == null ? '' : header[chosen.map.duration_value]);
+      const rawInput = {
+        investor_name: String(cells.investor_name.value || '').trim(),
+        project_name: String(cells.project_name.value || '').trim(),
+        amount: numeric(cells.amount.value),
+        start_date: excelDate(cells.start_date.value),
         duration_value: duration.value,
         duration_unit: duration.unit,
-        interest_rate: parseRate(valueAt('interest_rate'), rateCell),
-        net_profit: numeric(valueAt('net_profit')),
-        note: chosen.map.note == null ? '' : String(valueAt('note') || '').trim()
+        maturity_date: excelDate(cells.maturity_date.value),
+        interest_rate: parseRate(cells.interest_rate.value, cells.interest_rate.cell),
+        net_profit: numeric(cells.net_profit.value),
+        note: chosen.map.note == null ? '' : String(cells.note.value || '').trim()
       };
+      const completed = Autofill.autofillRow(rawInput, { carry });
+      carry = completed.carry;
+      const input = completed.value;
+      const mergedFills = recognized.filter(field => cells[field].merged).map(field => ({
+        field,
+        label: Autofill.LABELS[field] || field,
+        value: input[field],
+        method: 'merged_cell',
+        reason: '展開 Excel 合併儲存格',
+        estimated: false
+      }));
+      const rowAutofills = [...mergedFills, ...completed.autofills].map(item => ({ ...item, row: index + 1, duration_unit: input.duration_unit }));
+      autofills.push(...rowAutofills);
+      if (!Autofill.isMissing(input.maturity_date) && !Autofill.isMissing(input.duration_value)) {
+        const computedMaturity = Core.addDuration(input.start_date, input.duration_value, input.duration_unit);
+        if (computedMaturity && computedMaturity !== input.maturity_date) {
+          errors.push({ row: index + 1, message: `到期日 ${input.maturity_date} 與開始日加持續時間所得 ${computedMaturity} 不一致。` });
+          continue;
+        }
+      }
       const checked = Core.validateInvestment(input);
       if (checked.errors.length) {
         errors.push({ row: index + 1, message: checked.errors.join('、') });
         continue;
       }
-      const signature = [input.investor_name,input.project_name,input.start_date,input.amount,input.duration_value,input.duration_unit].map(value => String(value).toLocaleLowerCase('zh-TW')).join('|');
+      const signature = [input.investor_name,input.project_name,input.start_date,input.amount,input.duration_value,input.duration_unit,input.interest_rate,input.net_profit].map(value => String(value).toLocaleLowerCase('zh-TW')).join('|');
       if (seen.has(signature) || DB.isDuplicate(input)) {
         duplicates.push({ row: index + 1, input });
         continue;
       }
       seen.add(signature);
-      valid.push({ ...input, source_row: index + 1 });
+      valid.push({ ...input, source_row: index + 1, _autofills: rowAutofills });
     }
-    return { filename: file.name, sheetName: chosen.sheetName, valid, errors, duplicates };
+    return { filename: file.name, sheetName: chosen.sheetName, valid, errors, duplicates, autofills };
   }
 
   function renderImportPreview(result) {
     parsedImport = result;
     const blocked = result.errors.length > 0 || result.valid.length === 0;
-    $('#importPreview').innerHTML = `<div class="import-summary"><div class="import-stat"><span>可匯入</span><strong>${result.valid.length}</strong></div><div class="import-stat"><span>重複略過</span><strong>${result.duplicates.length}</strong></div><div class="import-stat"><span>格式錯誤</span><strong>${result.errors.length}</strong></div></div>
-      <div class="notice ${result.errors.length ? 'error' : ''}">${esc(result.filename)}｜工作表「${esc(result.sheetName)}」${result.errors.length ? '：請先修正所有錯誤，系統不會部分匯入。' : '：格式檢查通過。'}</div>
+    const fills = result.autofills || [];
+    const autofillRows = new Set(fills.map(item => item.row)).size;
+    const noticeClass = result.errors.length ? 'error' : fills.length ? 'warn' : '';
+    const noticeText = result.errors.length
+      ? '仍有無法補齊的資料，請先修正；系統不會部分匯入。'
+      : fills.length
+        ? `已自動補齊 ${autofillRows} 列、${fills.length} 個欄位，請核對橘色標示後再匯入。`
+        : '格式檢查通過，沒有需要補齊的欄位。';
+    $('#importPreview').innerHTML = `<div class="import-summary"><div class="import-stat"><span>可匯入</span><strong>${result.valid.length}</strong></div><div class="import-stat"><span>自動補齊欄位</span><strong>${fills.length}</strong></div><div class="import-stat"><span>重複略過</span><strong>${result.duplicates.length}</strong></div><div class="import-stat"><span>仍需修正</span><strong>${result.errors.length}</strong></div></div>
+      <div class="notice ${noticeClass}">${esc(result.filename)}｜工作表「${esc(result.sheetName)}」：${noticeText}</div>
       ${result.errors.length ? `<ul class="import-errors">${result.errors.map(error => `<li>第 ${error.row} 列：${esc(error.message)}</li>`).join('')}</ul>` : ''}
-      ${result.valid.length ? `<div class="import-preview-table"><table><thead><tr><th>Excel 列</th><th>投資人</th><th>投資案</th><th>金額</th><th>開始</th><th>期間</th><th>利率</th><th>淨收益</th></tr></thead><tbody>${result.valid.slice(0, 12).map(row => `<tr><td>${row.source_row}</td><td>${esc(row.investor_name)}</td><td>${esc(row.project_name)}</td><td>${money(row.amount)}</td><td>${displayDate(row.start_date)}</td><td>${durationLabel(row)}</td><td>${pct(row.interest_rate)}</td><td>${money(row.net_profit)}</td></tr>`).join('')}</tbody></table></div>` : ''}
-      <div class="form-actions"><button id="confirmImportBtn" class="btn btn-primary" type="button" ${blocked ? 'disabled' : ''}>確認匯入 ${result.valid.length} 筆</button></div>`;
+      ${result.valid.length ? `<div class="import-preview-table"><table><thead><tr><th>Excel 列</th><th>投資人</th><th>投資案</th><th>金額</th><th>開始</th><th>期間</th><th>利率</th><th>淨收益</th></tr></thead><tbody>${result.valid.slice(0, 12).map(row => `<tr><td>${row.source_row}</td>${renderImportCell(row,'investor_name',esc(row.investor_name))}${renderImportCell(row,'project_name',esc(row.project_name))}${renderImportCell(row,'amount',money(row.amount))}${renderImportCell(row,'start_date',displayDate(row.start_date))}${renderImportCell(row,'duration_value',durationLabel(row))}${renderImportCell(row,'interest_rate',pct(row.interest_rate))}${renderImportCell(row,'net_profit',money(row.net_profit))}</tr>`).join('')}</tbody></table></div>` : ''}
+      ${fills.length ? `<details class="import-autofill-details"><summary>查看全部 ${fills.length} 個自動補齊項目</summary><ul>${fills.map(item => `<li>第 ${item.row} 列・${esc(item.label)}：${esc(importAutofillValue(item))}（${esc(item.reason)}）${item.estimated ? '－請核對估算值' : ''}</li>`).join('')}</ul></details>` : ''}
+      <div class="form-actions"><button id="confirmImportBtn" class="btn btn-primary" type="button" ${blocked ? 'disabled' : ''}>${fills.length ? '確認補齊並' : '確認'}匯入 ${result.valid.length} 筆</button></div>`;
   }
 
   async function previewExcel(file) {
@@ -609,9 +667,11 @@
     button.disabled = true;
     button.textContent = '匯入中…';
     try {
+      const autofillFieldCount = parsedImport.autofills?.length || 0;
+      const autofillRowCount = new Set((parsedImport.autofills || []).map(item => item.row)).size;
       const result = await DB.importInvestments(parsedImport.valid);
       await refresh();
-      $('#importPreview').innerHTML = `<div class="settlement-success"><h3>Excel 匯入完成</h3><p>已新增 ${result.imported.length} 筆；另有 ${result.duplicates.length + parsedImport.duplicates.length} 筆重複資料被安全略過。</p><div class="toolbar"><button class="btn btn-success" type="button" data-open-panel="investments">查看投資資料</button></div></div>`;
+      $('#importPreview').innerHTML = `<div class="settlement-success"><h3>Excel 匯入完成</h3><p>已新增 ${result.imported.length} 筆；另有 ${result.duplicates.length + parsedImport.duplicates.length} 筆重複資料被安全略過。${autofillFieldCount ? `其中 ${autofillRowCount} 筆資料共自動補齊 ${autofillFieldCount} 個欄位。` : ''}</p><div class="toolbar"><button class="btn btn-success" type="button" data-open-panel="investments">查看投資資料</button></div></div>`;
       $('#xlsxInput').value = '';
       parsedImport = null;
       toast(`已匯入 ${result.imported.length} 筆投資資料。`);
