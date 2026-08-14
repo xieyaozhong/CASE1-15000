@@ -1,98 +1,278 @@
 <!doctype html>
 <html lang="zh-Hant-TW">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b1f3a" />
-  <title>週結算中心｜管理後台</title>
-  <link rel="stylesheet" href="assets/styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-  <script src="config.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1f3a">
+  <title>投資結算管理中心</title>
+  <link rel="stylesheet" href="assets/styles.css">
+  <link rel="stylesheet" href="assets/local-manager.css">
+  <script defer src="assets/vendor/xlsx.full.min.js"></script>
+  <script defer src="assets/settlement-core.js"></script>
+  <script defer src="assets/local-manager-db.js"></script>
+  <script defer src="assets/local-manager.js"></script>
 </head>
-<body>
-<div class="shell">
-  <header class="topbar">
-    <a class="brand" href="./"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18V9m6 9V5m6 13v-7m4 7H2"/></svg></span><span>週結算中心 · 後台</span></a>
-    <div class="top-actions"><span id="modeChip" class="status-chip demo"><span class="status-dot"></span>展示模式</span><a class="btn btn-soft btn-sm" href="index.html">客戶前台</a><button id="logoutBtn" class="btn btn-soft btn-sm" style="display:none">登出</button></div>
-  </header>
-
-  <main class="container">
-    <section id="adminLogin" class="card login-card" style="display:none">
-      <h1>管理員登入</h1><p>只有被設為 admin 角色的帳號可以進入後台。</p>
-      <form id="adminLoginForm"><div class="field"><label>Email</label><input class="input" type="email" name="email" required></div><div class="field" style="margin-top:12px"><label>密碼</label><input class="input" type="password" name="password" required></div><div class="form-actions"><button class="btn btn-primary">登入後台</button></div></form>
-    </section>
-
-    <section id="adminApp" style="display:none">
-      <div class="hero"><div><h1>每週收益結算</h1><p>從案件參與資料自動分配收益，確認後追蹤撥款。</p></div><div class="toolbar"><button id="refreshBtn" class="btn btn-soft">重新整理</button></div></div>
-      <div class="grid kpi-grid">
-        <article class="card kpi"><div class="kpi-label">投資人</div><div id="admInvestors" class="kpi-value">0</div><div class="kpi-meta">已建立帳戶資料</div></article>
-        <article class="card kpi"><div class="kpi-label">進行中投資案</div><div id="admProjects" class="kpi-value">0</div><div class="kpi-meta">可進行週結算</div></article>
-        <article class="card kpi"><div class="kpi-label">目前參與總額</div><div id="admPrincipal" class="kpi-value">0</div><div class="kpi-meta">所有 active 參與紀錄</div></article>
-        <article class="card kpi"><div class="kpi-label">待撥款收益</div><div id="admPending" class="kpi-value">0</div><div class="kpi-meta">尚未標記已撥款</div></article>
+<body class="page-manager">
+  <div class="shell">
+    <header class="topbar manager-topbar">
+      <a class="brand" href="admin.html" aria-label="投資結算管理中心首頁">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18V9m6 9V5m6 13v-7m4 7H2"/></svg>
+        </span>
+        <span><span class="brand-title">投資結算中心</span><small>INVESTMENT OPERATIONS</small></span>
+      </a>
+      <div class="top-actions">
+        <span id="storageChip" class="status-chip live"><span class="status-dot"></span>連線中</span>
+        <button id="quickBackupBtn" class="btn btn-soft btn-sm hide-mobile" type="button">備份資料</button>
       </div>
+    </header>
 
-      <div class="admin-layout section">
-        <aside class="card sidebar">
-          <button class="nav-btn active" data-panel="settlement">每週結算</button>
-          <button class="nav-btn" data-panel="payout">撥款管理</button>
-          <button class="nav-btn" data-panel="projects">投資案</button>
-          <button class="nav-btn" data-panel="investors">投資人</button>
-          <button class="nav-btn" data-panel="participations">參與紀錄</button>
-          <button class="nav-btn" data-panel="import">Excel 匯入</button>
-          <button class="nav-btn" data-panel="settings">系統設定</button>
+    <main class="container manager-container">
+      <section class="hero manager-hero">
+        <div>
+          <p class="eyebrow">MATURITY SETTLEMENT</p>
+          <h1>投資到期與收益結算</h1>
+          <p>一處管理投資資料、Excel 匯入、到期結算與顧客歷史報表。</p>
+        </div>
+        <div class="toolbar hero-actions">
+          <button class="btn btn-soft" type="button" data-open-panel="import">匯入 Excel</button>
+          <button id="heroAddBtn" class="btn btn-primary" type="button">＋ 新增投資資料</button>
+        </div>
+      </section>
+
+      <div id="appNotice" class="notice manager-notice" hidden></div>
+
+      <section class="grid kpi-grid" aria-label="投資摘要">
+        <article class="card kpi kpi-accent-blue">
+          <span class="kpi-icon" aria-hidden="true">人</span>
+          <div class="kpi-label">投資人</div>
+          <div id="kpiInvestors" class="kpi-value">0</div>
+          <div class="kpi-meta">目前資料庫中的顧客</div>
+        </article>
+        <article class="card kpi kpi-accent-navy">
+          <span class="kpi-icon" aria-hidden="true">案</span>
+          <div class="kpi-label">未結算本金</div>
+          <div id="kpiPrincipal" class="kpi-value">0</div>
+          <div class="kpi-meta">所有尚未結算紀錄</div>
+        </article>
+        <article class="card kpi kpi-accent-amber">
+          <span class="kpi-icon" aria-hidden="true">到</span>
+          <div class="kpi-label">目前已到期</div>
+          <div id="kpiDue" class="kpi-value">0</div>
+          <div id="kpiDueMeta" class="kpi-meta">等待一鍵結算</div>
+        </article>
+        <article class="card kpi kpi-accent-green">
+          <span class="kpi-icon" aria-hidden="true">益</span>
+          <div class="kpi-label">累計已結收益</div>
+          <div id="kpiProfit" class="kpi-value">0</div>
+          <div class="kpi-meta">所有歷史結算批次</div>
+        </article>
+      </section>
+
+      <div class="admin-layout section manager-layout">
+        <aside class="card sidebar manager-sidebar" aria-label="功能選單">
+          <button class="nav-btn active" type="button" data-panel="overview"><span>總覽</span><span id="navDueBadge" class="nav-badge">0</span></button>
+          <button class="nav-btn" type="button" data-panel="investments"><span>投資資料</span><span id="navInvestmentBadge" class="nav-badge">0</span></button>
+          <button class="nav-btn" type="button" data-panel="settlement"><span>一鍵結算</span></button>
+          <button class="nav-btn" type="button" data-panel="reports"><span>顧客報表</span><span id="navReportBadge" class="nav-badge">0</span></button>
+          <button class="nav-btn" type="button" data-panel="import"><span>Excel 匯入</span></button>
+          <button class="nav-btn" type="button" data-panel="settings"><span>備份與設定</span></button>
+          <div class="sidebar-foot">
+            <span id="lastSavedAt">尚未儲存</span>
+            <small>資料僅保存在目前裝置</small>
+          </div>
         </aside>
 
-        <div>
-          <section class="panel active" data-panel="settlement">
-            <div class="card card-pad"><div class="section-head"><div><h2>建立本週結算</h2><p>輸入投資案本週收益，系統依參與金額比例自動分配。</p></div></div>
-              <form id="settlementForm" class="form-grid">
-                <div class="field"><label>週起始日</label><input id="weekStart" class="input" type="date" name="week_start" required></div>
-                <div class="field"><label>週結束日</label><input id="weekEnd" class="input" type="date" name="week_end" required></div>
-                <div class="field full"><label>投資案</label><select id="settleProject" name="project_id" required></select></div>
-                <div class="field"><label>本週總收益</label><input class="input" type="number" name="gross_profit" min="0" step="0.01" required></div>
-                <div class="field"><label>費用／扣除</label><input class="input" type="number" name="fee_amount" min="0" step="0.01" value="0"></div>
-                <div class="field full"><div class="notice">分配公式：個人收益 ＝（本週總收益 − 費用）× 個人參與金額 ÷ 投資案有效參與總額。可重算同一週同一案件，舊的分配會被覆蓋。</div></div>
-                <div class="field full"><div class="form-actions"><button class="btn btn-primary">計算並儲存分配</button></div></div>
-              </form>
+        <div class="manager-panels">
+          <section class="panel active" data-panel="overview">
+            <div class="due-hero card">
+              <div>
+                <span class="due-kicker">TODAY'S ACTION</span>
+                <h2 id="overviewDueTitle">正在檢查到期資料…</h2>
+                <p id="overviewDueText">系統會依每筆投資的開始日與持續時間計算到期日。</p>
+              </div>
+              <button id="overviewSettleBtn" class="btn btn-success" type="button">前往一鍵結算</button>
             </div>
-            <div class="section" id="latestAllocation"></div>
+
+            <div class="dashboard-grid section">
+              <section class="card card-pad">
+                <div class="section-head">
+                  <div><h2>最近到期</h2><p>依到期日排序的未結算資料。</p></div>
+                  <button class="text-btn" type="button" data-open-panel="investments">查看全部</button>
+                </div>
+                <div id="overviewDueList" class="compact-list"></div>
+              </section>
+              <section class="card card-pad">
+                <div class="section-head">
+                  <div><h2>最近結算批次</h2><p>每次結算都保留完整時間戳。</p></div>
+                  <button class="text-btn" type="button" data-open-panel="reports">查看報表</button>
+                </div>
+                <div id="overviewBatchList" class="compact-list"></div>
+              </section>
+            </div>
           </section>
 
-          <section class="panel" data-panel="payout">
-            <div class="card table-wrap"><table><thead><tr><th>週期</th><th>投資人</th><th>投資案</th><th>收益</th><th>狀態</th><th>操作</th></tr></thead><tbody id="payoutBody"></tbody></table></div>
+          <section class="panel" data-panel="investments">
+            <div class="card card-pad">
+              <div class="section-head manager-section-head">
+                <div><h2>投資資料</h2><p>一列代表一位投資人參與一個投資案。</p></div>
+                <button id="tableAddBtn" class="btn btn-primary" type="button">＋ 新增資料</button>
+              </div>
+              <div class="data-toolbar">
+                <label class="search-box"><span aria-hidden="true">⌕</span><input id="investmentSearch" type="search" placeholder="搜尋投資人或投資案" aria-label="搜尋投資資料"></label>
+                <select id="investmentStatusFilter" aria-label="投資狀態">
+                  <option value="">全部狀態</option>
+                  <option value="active">進行中</option>
+                  <option value="due">已到期未結算</option>
+                  <option value="settled">已結算</option>
+                </select>
+                <span id="investmentCount" class="table-count">0 筆</span>
+              </div>
+            </div>
+            <div class="card table-wrap section table-card">
+              <table class="manager-table">
+                <thead><tr><th>投資人</th><th>投資案</th><th>投資金額</th><th>開始日</th><th>持續時間</th><th>到期日</th><th>投資利率</th><th>淨收益</th><th>狀態</th><th>操作</th></tr></thead>
+                <tbody id="investmentBody"></tbody>
+              </table>
+            </div>
           </section>
 
-          <section class="panel" data-panel="projects">
-            <div class="split"><div class="card table-wrap"><table><thead><tr><th>案號</th><th>投資案</th><th>案源</th><th>案件金額</th><th>狀態</th></tr></thead><tbody id="projectAdminBody"></tbody></table></div>
-            <div class="card card-pad"><h2>新增投資案</h2><form id="projectForm" class="form-grid"><div class="field"><label>案號</label><input class="input" name="code" required placeholder="P-001"></div><div class="field"><label>起始日</label><input class="input" type="date" name="start_date"></div><div class="field full"><label>投資案名稱</label><input class="input" name="name" required></div><div class="field"><label>案源</label><input class="input" name="source"></div><div class="field"><label>案件金額</label><input class="input" type="number" step="0.01" name="case_amount" required></div><div class="field full"><label>備註</label><textarea name="note"></textarea></div><div class="field full"><div class="form-actions"><button class="btn btn-primary">新增投資案</button></div></div></form></div></div>
+          <section class="panel" data-panel="settlement">
+            <div class="card settlement-card">
+              <div class="settlement-copy">
+                <span class="due-kicker">ONE-CLICK CLOSE</span>
+                <h2>一次結算所有已到期投資</h2>
+                <p>只有到期日早於或等於結算基準日、且尚未結算的資料會被納入。完成後將鎖定本金、利率、淨收益與名稱快照。</p>
+              </div>
+              <div class="settlement-control">
+                <label for="settlementAsOf">結算基準日</label>
+                <input id="settlementAsOf" class="input" type="date">
+                <button id="runSettlementBtn" class="btn btn-success" type="button">一鍵結算全部到期資料</button>
+              </div>
+            </div>
+
+            <div class="grid settlement-kpis section">
+              <article class="card mini-kpi"><span>到期筆數</span><strong id="dueCount">0</strong></article>
+              <article class="card mini-kpi"><span>涉及顧客</span><strong id="dueInvestors">0</strong></article>
+              <article class="card mini-kpi"><span>到期本金</span><strong id="duePrincipal">0</strong></article>
+              <article class="card mini-kpi"><span>預計淨收益</span><strong id="dueProfit">0</strong></article>
+            </div>
+
+            <section class="card table-wrap section table-card">
+              <div class="table-title"><div><h2>本次預覽</h2><p>結算前可先核對所有即將被納入的資料。</p></div></div>
+              <table class="manager-table"><thead><tr><th>投資人</th><th>投資案</th><th>到期日</th><th>本金</th><th>利率</th><th>淨收益</th></tr></thead><tbody id="duePreviewBody"></tbody></table>
+            </section>
+            <div id="settlementResult" class="section"></div>
           </section>
 
-          <section class="panel" data-panel="investors">
-            <div class="split"><div class="card table-wrap"><table><thead><tr><th>代碼</th><th>名稱</th><th>Email</th><th>歷史已撥款</th></tr></thead><tbody id="investorBody"></tbody></table></div>
-            <div class="card card-pad"><h2>新增投資人</h2><form id="investorForm" class="form-grid"><div class="field"><label>投資人代碼</label><input class="input" name="code" required placeholder="INV-001"></div><div class="field"><label>顯示名稱</label><input class="input" name="display_name" required></div><div class="field full"><label>登入 Email（可稍後補）</label><input class="input" type="email" name="email"></div><div class="field full"><label>既有累計已撥款</label><input class="input" type="number" step="0.01" name="opening_paid_amount" value="0"></div><div class="field full"><div class="form-actions"><button class="btn btn-primary">新增投資人</button></div></div></form></div></div>
-          </section>
-
-          <section class="panel" data-panel="participations">
-            <div class="split"><div class="card table-wrap"><table><thead><tr><th>投資人</th><th>投資案</th><th>參與金額</th><th>起始日</th><th>狀態</th></tr></thead><tbody id="participationBody"></tbody></table></div>
-            <div class="card card-pad"><h2>新增參與紀錄</h2><form id="participationForm" class="form-grid"><div class="field full"><label>投資人</label><select id="partInvestor" name="investor_id" required></select></div><div class="field full"><label>投資案</label><select id="partProject" name="project_id" required></select></div><div class="field"><label>參與金額</label><input class="input" type="number" step="0.01" name="amount" required></div><div class="field"><label>起始日</label><input class="input" type="date" name="start_date" required></div><div class="field full"><div class="form-actions"><button class="btn btn-primary">新增參與</button></div></div></form></div></div>
+          <section class="panel" data-panel="reports">
+            <div class="card card-pad">
+              <div class="section-head manager-section-head">
+                <div><h2>結算總表與顧客歷史</h2><p>選擇批次後，點擊顧客名稱查看本次明細與所有歷史時間戳。</p></div>
+                <div class="toolbar">
+                  <select id="batchSelect" aria-label="選擇結算批次"></select>
+                  <button id="exportBatchBtn" class="btn btn-soft" type="button">匯出本批 Excel</button>
+                </div>
+              </div>
+              <div id="reportBatchMeta" class="report-meta"></div>
+            </div>
+            <section class="card table-wrap section table-card">
+              <table class="manager-table"><thead><tr><th>顧客</th><th>投資筆數</th><th>本金合計</th><th>本金加權利率</th><th>本次淨收益</th><th>有效報酬率</th></tr></thead><tbody id="customerSummaryBody"></tbody></table>
+            </section>
+            <section class="card table-wrap section table-card">
+              <div class="table-title"><div><h2>本批逐筆明細</h2><p>這些資料是結算當下保存的不可變快照。</p></div></div>
+              <table class="manager-table"><thead><tr><th>顧客</th><th>投資案</th><th>開始日</th><th>到期日</th><th>本金</th><th>利率</th><th>淨收益</th></tr></thead><tbody id="batchDetailBody"></tbody></table>
+            </section>
           </section>
 
           <section class="panel" data-panel="import">
-            <div class="card card-pad"><div class="section-head"><div><h2>匯入舊 Excel</h2><p>支援你目前的「日期／起租案名／案源／案件金額／參與總額／各投資人欄位」格式。</p></div></div>
-              <div class="notice warn">Excel 只會在你的瀏覽器本機解析；正式模式下解析後才寫入 Supabase。公開 GitHub repository 不會存放客戶原始 Excel。</div>
-              <div id="dropzone" class="file-drop"><strong>選擇或拖曳 .xlsx 檔案</strong><div class="muted" style="margin-top:6px">會自動辨識「參與總額」後方的投資人欄位與「目前總共撥款」摘要。</div><input id="xlsxInput" type="file" accept=".xlsx,.xls" style="margin-top:16px"></div>
-              <div id="importPreview"></div>
+            <div class="card card-pad import-card">
+              <div class="section-head manager-section-head">
+                <div><h2>Excel 自動匯入</h2><p>標準格式是一列一筆投資；系統會自動建立不存在的投資人與投資案。</p></div>
+                <button id="downloadTemplateBtn" class="btn btn-soft" type="button">下載 Excel 範本</button>
+              </div>
+              <div class="notice">必要欄位：投資人名、投資案名、投資金額、開始時間、持續時間、投資利率、投資淨收益。持續時間可寫「6個月」或「180天」；純數字預設為月。</div>
+              <label id="dropzone" class="file-drop manager-dropzone" for="xlsxInput">
+                <span class="drop-icon" aria-hidden="true">⇧</span>
+                <strong>拖曳 Excel 到這裡，或點擊選擇檔案</strong>
+                <span>支援 .xlsx、.xls；檔案只在目前裝置解析。</span>
+                <input id="xlsxInput" class="file-input" type="file" accept=".xlsx,.xls">
+              </label>
+              <div id="importPreview" class="section"></div>
             </div>
           </section>
 
           <section class="panel" data-panel="settings">
-            <div class="card card-pad"><h2>系統設定</h2><div id="settingMode" class="notice"></div><p>正式上線時，在 <span class="code">config.js</span> 填入 Supabase Project URL 與 anon key，並將 <span class="code">DEMO_MODE</span> 改為 <span class="code">false</span>。</p><p class="muted">請勿把 Supabase service_role key 放到任何前端檔案；後台管理權限由資料庫 RLS 判斷。</p><div class="form-actions"><button id="resetDemo" class="btn btn-danger">重設展示資料</button></div></div>
+            <div class="settings-grid">
+              <section class="card card-pad">
+                <span class="settings-icon" aria-hidden="true">DB</span>
+                <h2>資料儲存與備份</h2>
+                <p id="storageDescription" class="muted">正在確認資料儲存位置…</p>
+                <dl class="settings-stats"><div><dt>最後儲存</dt><dd id="settingsUpdatedAt">—</dd></div><div><dt>投資資料</dt><dd id="settingsInvestmentCount">0 筆</dd></div><div><dt>結算批次</dt><dd id="settingsBatchCount">0 批</dd></div></dl>
+              </section>
+              <section class="card card-pad">
+                <span class="settings-icon" aria-hidden="true">BK</span>
+                <h2>備份與還原</h2>
+                <p class="muted">建議每次大量匯入或結算後下載 JSON 完整備份。</p>
+                <div class="stack-actions"><button id="exportBackupBtn" class="btn btn-primary" type="button">下載完整備份</button><label class="btn btn-soft restore-label" for="restoreInput">從備份還原<input id="restoreInput" type="file" accept=".json" hidden></label></div>
+              </section>
+              <section class="card card-pad">
+                <span class="settings-icon" aria-hidden="true">DEMO</span>
+                <h2>示範資料</h2>
+                <p class="muted">載入幾筆範例，可快速測試到期結算與顧客歷史。</p>
+                <button id="loadDemoBtn" class="btn btn-soft" type="button">載入示範資料</button>
+              </section>
+              <section class="card card-pad danger-zone">
+                <span class="settings-icon" aria-hidden="true">!</span>
+                <h2>清空所有資料</h2>
+                <p class="muted">此操作會刪除所有投資與結算紀錄，請先下載備份。</p>
+                <button id="clearAllBtn" class="btn btn-danger" type="button">清空資料</button>
+              </section>
+            </div>
           </section>
         </div>
       </div>
+    </main>
+  </div>
+
+  <div id="investmentModal" class="modal-overlay" aria-hidden="true" inert>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="investmentModalTitle">
+      <header class="modal-head"><div><p>INVESTMENT RECORD</p><h2 id="investmentModalTitle">新增投資資料</h2></div><button class="modal-close" type="button" data-close-modal aria-label="關閉">×</button></header>
+      <form id="investmentForm" class="modal-body">
+        <input id="investmentId" type="hidden">
+        <div class="form-grid">
+          <div class="field"><label for="investorName">投資人名</label><input id="investorName" class="input" name="investor_name" list="investorOptions" autocomplete="off" required><datalist id="investorOptions"></datalist></div>
+          <div class="field"><label for="projectName">投資案名</label><input id="projectName" class="input" name="project_name" list="projectOptions" autocomplete="off" required><datalist id="projectOptions"></datalist></div>
+          <div class="field"><label for="investmentAmount">投資金額</label><input id="investmentAmount" class="input" name="amount" type="number" min="0.01" step="0.01" required></div>
+          <div class="field"><label for="investmentStart">開始時間</label><input id="investmentStart" class="input" name="start_date" type="date" required></div>
+          <div class="field"><label for="durationValue">持續時間</label><div class="input-pair"><input id="durationValue" class="input" name="duration_value" type="number" min="1" step="1" required><select id="durationUnit" name="duration_unit"><option value="month">個月</option><option value="day">天</option></select></div></div>
+          <div class="field"><label>自動計算到期日</label><output id="maturityPreview" class="calculated-field">—</output></div>
+          <div class="field"><label for="interestRate">投資利率（整期 %）</label><div class="input-suffix"><input id="interestRate" class="input" name="interest_rate" type="number" step="0.0001" required><span>%</span></div></div>
+          <div class="field"><label for="netProfit">投資淨收益</label><input id="netProfit" class="input" name="net_profit" type="number" step="0.01" required></div>
+          <div class="field full"><label for="investmentNote">備註（選填）</label><textarea id="investmentNote" name="note" placeholder="例如：合約編號、特殊約定"></textarea></div>
+        </div>
+        <div id="rateHint" class="form-hint">投資淨收益是實際結算金額；利率只作契約與歷史顯示，不會覆蓋淨收益。</div>
+        <div class="form-actions modal-actions"><button class="btn btn-soft" type="button" data-close-modal>取消</button><button id="saveInvestmentBtn" class="btn btn-primary" type="submit">儲存投資資料</button></div>
+      </form>
     </section>
-  </main>
-</div>
-<script src="assets/common.js"></script><script src="assets/data.js"></script><script src="assets/admin.js"></script>
-</body></html>
+  </div>
+
+  <div id="customerDrawer" class="drawer-overlay" aria-hidden="true" inert>
+    <aside class="customer-drawer" role="dialog" aria-modal="true" aria-labelledby="customerDrawerTitle">
+      <header class="drawer-head"><div><p>CUSTOMER LEDGER</p><h2 id="customerDrawerTitle">顧客歷史</h2></div><button id="closeCustomerDrawer" class="modal-close" type="button" aria-label="關閉">×</button></header>
+      <div id="customerDrawerBody" class="drawer-body"></div>
+    </aside>
+  </div>
+
+  <div id="confirmModal" class="modal-overlay confirm-overlay" aria-hidden="true" inert>
+    <section class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <span class="confirm-icon" aria-hidden="true">✓</span>
+      <h2 id="confirmTitle">確認操作</h2>
+      <p id="confirmMessage"></p>
+      <div class="form-actions"><button id="confirmCancelBtn" class="btn btn-soft" type="button">取消</button><button id="confirmOkBtn" class="btn btn-primary" type="button">確認</button></div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

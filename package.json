@@ -1,0 +1,14 @@
+{
+  "name": "case1-local-investment-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "本機投資到期結算與顧客歷史報表",
+  "scripts": {
+    "start": "node local-server.mjs --open",
+    "start:no-open": "node local-server.mjs",
+    "test": "node --test --test-isolation=none tests/*.test.cjs"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
