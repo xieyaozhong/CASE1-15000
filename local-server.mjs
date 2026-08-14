@@ -177,7 +177,7 @@ const server = createServer(async (request, response) => {
       'Content-Length': contents.length,
       'Cache-Control': path.extname(resolvedPath) === '.html' ? 'no-cache' : 'public, max-age=3600',
       'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+      'Content-Security-Policy': "default-src 'self'; script-src 'self' https://accounts.google.com https://apis.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com https://*.gstatic.com; connect-src 'self' https://accounts.google.com https://www.googleapis.com; frame-src https://accounts.google.com https://docs.google.com https://drive.google.com https://*.google.com"
     });
     if (request.method === 'HEAD') response.end();
     else response.end(contents);

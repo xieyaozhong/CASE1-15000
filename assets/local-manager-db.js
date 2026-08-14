@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = 'case1-local-investment-manager-v1';
   const Core = window.SettlementCore;
+  const ImportIdentity = window.ImportIdentity;
 
   function uid(prefix) {
     const value = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -39,6 +40,20 @@
 
   function normalizedName(value) {
     return String(value || '').trim().toLocaleLowerCase('zh-TW');
+  }
+
+  function sanitizeProvenance(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(item => ({
+      field: String(item?.field || ''),
+      label: String(item?.label || item?.field || ''),
+      value: item?.value == null || ['string','number','boolean'].includes(typeof item.value) ? item?.value ?? null : String(item.value),
+      method: String(item?.method || ''),
+      reason: String(item?.reason || ''),
+      estimated: Boolean(item?.estimated),
+      duration_unit: ['day','month'].includes(item?.duration_unit) ? item.duration_unit : null,
+      source_ref: String(item?.source_ref || '')
+    })).filter(item => item.field);
   }
 
   function nextCode(items, prefix) {
@@ -162,7 +177,14 @@
       const timestamp = new Date().toISOString();
       const investor = this.findOrCreateInvestor(value.investor_name, timestamp);
       const project = this.findOrCreateProject(value.project_name, timestamp);
-      return {
+      const suppliedSource = ImportIdentity?.normalizeSource(input?._import_source);
+      const importSource = suppliedSource
+        ? { ...suppliedSource, imported_at: current?.import_source?.imported_at || timestamp }
+        : clone(current?.import_source || null);
+      const provenance = Array.isArray(input?._autofills)
+        ? sanitizeProvenance(input._autofills)
+        : clone(current?.autofill_provenance || []);
+      const record = {
         id: current?.id || uid('investment'),
         investor_id: investor.id,
         investor_name: investor.display_name,
@@ -180,6 +202,11 @@
         created_at: current?.created_at || timestamp,
         updated_at: timestamp
       };
+      if (importSource) record.import_source = importSource;
+      if (provenance.length) record.autofill_provenance = provenance;
+      if (current?.import_source && !suppliedSource) record.source_modified_at = timestamp;
+      else if (current?.source_modified_at) record.source_modified_at = current.source_modified_at;
+      return record;
     }
 
     async upsertInvestment(input, id) {
@@ -203,35 +230,48 @@
       return true;
     }
 
-    isDuplicate(input) {
+    importStatus(input, importSource) {
       const checked = Core.validateInvestment(input);
-      if (checked.errors.length) return false;
-      const value = checked.value;
-      return this.state.investments.some(item =>
-        normalizedName(item.investor_name) === normalizedName(value.investor_name) &&
-        normalizedName(item.project_name) === normalizedName(value.project_name) &&
-        item.start_date === value.start_date &&
-        Number(item.amount) === Number(value.amount) &&
-        Number(item.duration_value) === Number(value.duration_value) &&
-        item.duration_unit === value.duration_unit &&
-        Number(item.interest_rate) === Number(value.interest_rate) &&
-        Number(item.net_profit) === Number(value.net_profit)
-      );
+      if (checked.errors.length) return { status: 'invalid', record: null };
+      return ImportIdentity.classify(this.state.investments, checked.value, importSource || input?._import_source);
+    }
+
+    isDuplicate(input, importSource) {
+      return this.importStatus(input, importSource).status === 'duplicate';
     }
 
     async importInvestments(rows) {
       const imported = [];
       const duplicates = [];
-      for (const input of rows || []) {
-        if (this.isDuplicate(input)) {
-          duplicates.push(input);
-          continue;
+      const sourceKeys = new Set();
+      const originalState = clone(this.state);
+      try {
+        for (const input of rows || []) {
+          const key = ImportIdentity.sourceKey(input?._import_source);
+          if (key && sourceKeys.has(key)) throw new Error(`匯入來源 ${input._import_source.source_ref} 重複出現，為避免漏帳已取消整批匯入。`);
+          if (key) sourceKeys.add(key);
+          const status = this.importStatus(input, input?._import_source);
+          if (status.status === 'conflict') {
+            const detail = status.reason === 'ambiguous_local_file'
+              ? '同名本機檔案已重存或變更，無法安全判定是否同一批資料'
+              : status.reason === 'legacy_record_match'
+                ? '系統內有相同內容但缺少來源識別的舊資料，需先人工核對'
+                : '來源曾匯入，但本次內容不同';
+            throw new Error(`來源 ${input?._import_source?.source_ref || '資料列'}：${detail}；為避免重複本金已取消整批匯入。`);
+          }
+          if (status.status === 'duplicate') {
+            duplicates.push(input);
+            continue;
+          }
+          const record = this.buildInvestment(input, null);
+          this.state.investments.unshift(record);
+          imported.push(record);
         }
-        const record = this.buildInvestment(input, null);
-        this.state.investments.unshift(record);
-        imported.push(record);
+        if (imported.length) await this.persist('import_excel');
+      } catch (error) {
+        if (!/其他視窗更新/.test(String(error?.message || ''))) this.state = originalState;
+        throw error;
       }
-      if (imported.length) await this.persist('import_excel');
       return { imported: clone(imported), duplicates: clone(duplicates) };
     }
 

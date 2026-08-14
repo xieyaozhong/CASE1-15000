@@ -10,6 +10,10 @@
   <script defer src="assets/vendor/xlsx.full.min.js"></script>
   <script defer src="assets/settlement-core.js"></script>
   <script defer src="assets/import-autofill.js"></script>
+  <script defer src="assets/legacy-matrix-import.js"></script>
+  <script defer src="assets/excel-import-guard.js"></script>
+  <script defer src="assets/google-drive-import.js"></script>
+  <script defer src="assets/import-identity.js"></script>
   <script defer src="assets/local-manager-db.js"></script>
   <script defer src="assets/local-manager.js"></script>
 </head>
@@ -36,7 +40,7 @@
           <p>一處管理投資資料、Excel 匯入、到期結算與顧客歷史報表。</p>
         </div>
         <div class="toolbar hero-actions">
-          <button class="btn btn-soft" type="button" data-open-panel="import">匯入 Excel</button>
+          <button id="heroImportBtn" class="btn btn-soft" type="button" data-open-panel="import" aria-controls="panel-import">匯入 Excel</button>
           <button id="heroAddBtn" class="btn btn-primary" type="button">＋ 新增投資資料</button>
         </div>
       </section>
@@ -186,19 +190,31 @@
             </section>
           </section>
 
-          <section class="panel" data-panel="import">
+          <section id="panel-import" class="panel panel-anchor" data-panel="import" tabindex="-1" aria-labelledby="importPanelTitle">
             <div class="card card-pad import-card">
               <div class="section-head manager-section-head">
-                <div><h2>Excel 自動匯入</h2><p>標準格式是一列一筆投資；系統會自動建立不存在的投資人與投資案。</p></div>
+                <div><h2 id="importPanelTitle">Excel 自動匯入</h2><p>支援標準逐筆格式與舊版案件分配矩陣；系統會自動建立不存在的投資人與投資案。</p></div>
                 <button id="downloadTemplateBtn" class="btn btn-soft" type="button">下載 Excel 範本</button>
               </div>
-              <div class="notice">系統會自動補齊有可靠依據的空白欄位，並在預覽以橘色標示。無法安全推斷的投資人、案名或金額仍會提示修正，不會自行猜測。</div>
+              <div class="notice">系統會自動補齊有可靠依據的空白欄位，並在預覽以橘色標示。案件分配矩陣會將每個投資人格展開成一筆；無法安全推斷的日期或財務條件會先請您一次確認。</div>
+              <div class="import-source-bar" aria-label="選擇 Excel 來源">
+                <div>
+                  <strong>從 Google 雲端硬碟匯入</strong>
+                  <span>登入後選取 Excel 或 Google 試算表；檔案會直接在目前瀏覽器解析。</span>
+                </div>
+                <div class="stack-actions">
+                  <button id="googleDriveImportBtn" class="btn btn-primary" type="button">從 Google Drive 選取</button>
+                  <button id="openDriveSettingsBtn" class="btn btn-soft" type="button">連線設定</button>
+                </div>
+              </div>
+              <div id="driveImportStatus" class="drive-status" role="status" aria-live="polite">Google Drive 需先完成一次連線設定；從電腦匯入則不需要網路。</div>
               <label id="dropzone" class="file-drop manager-dropzone" for="xlsxInput">
                 <span class="drop-icon" aria-hidden="true">⇧</span>
                 <strong>拖曳 Excel 到這裡，或點擊選擇檔案</strong>
                 <span>支援 .xlsx、.xls；檔案只在目前裝置解析。</span>
                 <input id="xlsxInput" class="file-input" type="file" accept=".xlsx,.xls">
               </label>
+              <div id="importAnnouncement" class="sr-only" role="status" aria-live="polite"></div>
               <div id="importPreview" class="section"></div>
             </div>
           </section>
@@ -216,6 +232,18 @@
                 <h2>備份與還原</h2>
                 <p class="muted">建議每次大量匯入或結算後下載 JSON 完整備份。</p>
                 <div class="stack-actions"><button id="exportBackupBtn" class="btn btn-primary" type="button">下載完整備份</button><label class="btn btn-soft restore-label" for="restoreInput">從備份還原<input id="restoreInput" type="file" accept=".json" hidden></label></div>
+              </section>
+              <section id="googleDriveSettings" class="card card-pad drive-settings-card">
+                <span class="settings-icon" aria-hidden="true">G</span>
+                <h2>Google Drive 匯入設定</h2>
+                <p class="muted">填入 Google Cloud 的 Web Client ID、Browser API Key 與 Cloud Project Number。設定只保存在這個瀏覽器；系統不會要求 Client Secret，也不會保存登入權杖。</p>
+                <form id="driveConfigForm" class="drive-config-form">
+                  <div class="field"><label for="driveClientId">OAuth Web Client ID</label><input id="driveClientId" class="input" name="client_id" inputmode="text" autocomplete="off" spellcheck="false" placeholder="…apps.googleusercontent.com"></div>
+                  <div class="field"><label for="driveApiKey">Browser API Key</label><input id="driveApiKey" class="input" name="api_key" inputmode="text" autocomplete="off" spellcheck="false" placeholder="AIza…"></div>
+                  <div class="field"><label for="driveAppId">Cloud Project Number</label><input id="driveAppId" class="input" name="app_id" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="例如 123456789012"></div>
+                  <div id="driveConfigStatus" class="drive-config-status" role="status" aria-live="polite"></div>
+                  <div class="stack-actions"><button class="btn btn-primary" type="submit">儲存連線設定</button><button id="clearDriveConfigBtn" class="btn btn-soft" type="button">清除設定</button></div>
+                </form>
               </section>
               <section class="card card-pad">
                 <span class="settings-icon" aria-hidden="true">DEMO</span>

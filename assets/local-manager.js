@@ -4,6 +4,10 @@
   const DB = window.LocalInvestmentDB;
   const Core = window.SettlementCore;
   const Autofill = window.ImportAutofill;
+  const LegacyMatrix = window.LegacyMatrixImport;
+  const ExcelGuard = window.ExcelImportGuard;
+  const DriveImport = window.GoogleDriveImport;
+  const ImportIdentity = window.ImportIdentity;
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
   const moneyFormat = new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2 });
@@ -14,6 +18,10 @@
   let snapshot;
   let activeBatchId = null;
   let parsedImport = null;
+  let pendingImportFile = null;
+  let legacyProfileOptions = null;
+  let appReady = false;
+  const panelNames = new Set($$('.panel[data-panel]').map(panel => panel.dataset.panel));
 
   function esc(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -112,12 +120,36 @@
     });
   }
 
-  function switchPanel(name) {
+  function panelFromLocation() {
+    let name = '';
+    try { name = decodeURIComponent(window.location.hash.replace(/^#/, '')); }
+    catch (_) { return 'overview'; }
+    return panelNames.has(name) ? name : 'overview';
+  }
+
+  function updatePanelUrl(name, replace = false) {
+    const url = new URL(window.location.href);
+    url.hash = name === 'overview' ? '' : name;
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next === current) return;
+    window.history[replace ? 'replaceState' : 'pushState']({ panel: name }, '', next);
+  }
+
+  function switchPanel(name, options = {}) {
+    if (!panelNames.has(name)) name = 'overview';
+    const { updateUrl = true, replaceUrl = false, focus = false, scroll = true } = options;
     $$('.nav-btn[data-panel]').forEach(button => button.classList.toggle('active', button.dataset.panel === name));
     $$('.panel[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === name));
-    if (name === 'settlement') renderDuePreview();
-    if (name === 'reports') renderReports();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (snapshot && name === 'settlement') renderDuePreview();
+    if (snapshot && name === 'reports') renderReports();
+    if (updateUrl) updatePanelUrl(name, replaceUrl);
+    if (!scroll) return;
+    const panel = $(`.panel[data-panel="${name}"]`);
+    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    if (name === 'import' || name === 'settings') panel?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    else window.scrollTo({ top: 0, behavior });
+    if (focus) panel?.focus({ preventScroll: true });
   }
 
   function updateStorageStatus() {
@@ -548,6 +580,7 @@
 
   function importAutofillValue(item) {
     if (item.field === 'start_date' || item.field === 'maturity_date') return displayDate(item.value);
+    if (item.field === 'amount') return money(item.value);
     if (item.field === 'duration_value') return `${number(item.value)} ${item.duration_unit === 'day' ? '天' : '個月'}`;
     if (item.field === 'interest_rate') return pct(item.value);
     if (item.field === 'net_profit') return money(item.value);
@@ -556,26 +589,199 @@
 
   function renderImportCell(row, field, displayValue) {
     const fill = (row._autofills || []).find(item => item.field === field);
-    return `<td${fill ? ' class="is-autofilled"' : ''}>${displayValue}${fill ? `<span class="autofill-badge">已補齊</span><small class="autofill-reason">${esc(fill.reason)}</small>` : ''}</td>`;
+    const badges = {
+      amount_scale: '已換算',
+      batch_default: '套用本批預設',
+      note: '備註辨識候選',
+      formula: '估算值',
+      manual_override: '手動補齊',
+      merged_cell: '合併格展開',
+      carry: '沿用明確值',
+      date_range: '日期推算'
+    };
+    const badge = fill ? badges[fill.method] || '已補齊' : '';
+    return `<td${fill ? ' class="is-autofilled"' : ''}>${displayValue}${fill ? `<span class="autofill-badge">${esc(badge)}</span><small class="autofill-reason">${esc(fill.reason)}</small>` : ''}</td>`;
   }
 
-  async function parseWorkbook(file) {
+  function announceImport(message) {
+    const region = $('#importAnnouncement');
+    if (region) region.textContent = message;
+  }
+
+  async function sha256Hex(buffer) {
+    if (!ImportIdentity) throw new Error('匯入來源識別元件未載入，請重新整理後再試。');
+    try { return await ImportIdentity.fingerprintArrayBuffer(buffer); }
+    catch (_) { throw new Error('目前瀏覽器無法建立安全的匯入檔案指紋，請改用新版瀏覽器或本機模式。'); }
+  }
+
+  function importConflictMessage(status) {
+    if (status?.reason === 'ambiguous_local_file') {
+      return '同名本機檔案的來源位置曾匯入，但檔案內容已重存或變更。若是同一份檔案請勿重匯；若是另一份同名檔，請先改名再匯入。';
+    }
+    if (status?.reason === 'legacy_record_match') {
+      return '系統內已有相同內容、但沒有 Excel 來源識別的舊資料；請先核對該筆是否已匯入，系統不會自動略過或新增。';
+    }
+    return '此來源曾匯入，但本次換算內容不同；請核對金額單位、期間、利率及日期。';
+  }
+
+  function legacyProfileResult(file, candidate) {
+    const inspection = candidate.inspection;
+    return {
+      filename: file.name,
+      sheetName: candidate.sheetName,
+      format: 'legacy_matrix',
+      needsProfile: true,
+      valid: [],
+      errors: [],
+      duplicates: [],
+      autofills: [],
+      warnings: [],
+      legacy: {
+        sourceRowCount: inspection.sourceRowCount,
+        investmentCount: inspection.investmentCount,
+        investorColumnCount: inspection.investorColumnCount,
+        usedInvestorColumnCount: inspection.usedInvestorColumnCount,
+        missingStartRows: inspection.missingStartRows,
+        missingDurationCount: inspection.missingDurationRows.length,
+        missingRateCount: inspection.missingRateRows.length,
+        durationCandidateCount: Math.max(0, inspection.sourceRowCount - inspection.missingDurationRows.length),
+        rateCandidateCount: Math.max(0, inspection.sourceRowCount - inspection.missingRateRows.length),
+        mismatches: inspection.mismatches,
+        invalidAllocationCount: inspection.invalidAllocations.length,
+        unallocatedCount: inspection.unallocatedRows.length,
+        orphanAllocationColumnCount: inspection.orphanAllocationColumns.length,
+        duplicateHeaderCount: inspection.duplicateHeaders.length
+      }
+    };
+  }
+
+  function parseLegacyCandidate(file, candidate, options, fileFingerprint) {
+    if (!options) return legacyProfileResult(file, candidate);
+    const converted = LegacyMatrix.convert(candidate.inspection, options);
+    const valid = [], duplicates = [], autofills = [];
+    const errors = [...converted.errors];
+    const warnings = [...converted.warnings];
+    const seen = new Set();
+
+    for (const record of converted.records) {
+      const rawInput = {
+        investor_name: record.investor_name,
+        project_name: record.project_name,
+        amount: record.amount,
+        start_date: excelDate(record.start_raw),
+        duration_value: record.duration_value,
+        duration_unit: record.duration_unit,
+        maturity_date: '',
+        interest_rate: record.interest_rate,
+        net_profit: record.net_profit,
+        note: record.note
+      };
+      const completed = Autofill.autofillRow(rawInput, { carry: Autofill.emptyCarry() });
+      const input = completed.value;
+      const rowAutofills = [...record.autofills, ...completed.autofills].map(item => ({
+        ...item,
+        label: Autofill.LABELS[item.field] || item.field,
+        row: record.source_row,
+        source_ref: record.source_ref,
+        duration_unit: item.duration_unit || input.duration_unit
+      }));
+      autofills.push(...rowAutofills);
+      const checked = Core.validateInvestment(input);
+      if (checked.errors.length) {
+        errors.push({ row: record.source_row, source_ref: record.source_ref, message: checked.errors.join('、') });
+        continue;
+      }
+      const normalizedInput = checked.value;
+      const importSource = {
+        file_sha256: fileFingerprint,
+        filename: file.name,
+        provider: file._import_provider || 'local_file',
+        document_id: file._import_document_id || '',
+        sheet_name: candidate.sheetName,
+        source_ref: record.source_ref,
+        source_row: record.source_row,
+        source_column: record.source_column
+      };
+      const sourceKey = `${candidate.sheetName}|${record.source_ref}`;
+      if (seen.has(sourceKey)) {
+        errors.push({ row: record.source_row, source_ref: record.source_ref, message: '同一來源儲存格重複產生多筆資料，已阻擋整批匯入。' });
+        continue;
+      }
+      seen.add(sourceKey);
+      const importStatus = DB.importStatus(normalizedInput, importSource);
+      if (importStatus.status === 'conflict') {
+        errors.push({ row: record.source_row, source_ref: record.source_ref, message: importConflictMessage(importStatus) });
+        continue;
+      }
+      if (importStatus.status === 'duplicate') {
+        duplicates.push({ row: record.source_row, source_ref: record.source_ref, input: normalizedInput });
+        continue;
+      }
+      valid.push({ ...normalizedInput, source_row: record.source_row, source_column: record.source_column, source_ref: record.source_ref, _import_source: importSource, _autofills: rowAutofills });
+    }
+    return {
+      filename: file.name,
+      sheetName: candidate.sheetName,
+      format: 'legacy_matrix',
+      needsProfile: false,
+      valid,
+      errors,
+      duplicates,
+      autofills,
+      warnings,
+      legacy: { ...legacyProfileResult(file, candidate).legacy, amountScale: Number(options.amount_scale), useNoteTerms: options.use_note_terms === true }
+    };
+  }
+
+  async function parseWorkbook(file, legacyOptions) {
     if (!window.XLSX) throw new Error('Excel 元件未載入，請確認 assets/vendor/xlsx.full.min.js 存在。');
     if (!Autofill) throw new Error('自動補齊元件未載入，請重新整理後再試。');
-    const workbook = XLSX.read(await file.arrayBuffer(), { cellDates: true, cellNF: true });
+    if (!ExcelGuard) throw new Error('Excel 安全檢查元件未載入，請重新整理後再試。');
+    const workbookBuffer = await file.arrayBuffer();
+    const fileFingerprint = await sha256Hex(workbookBuffer);
+    const workbook = XLSX.read(workbookBuffer, { cellDates: true, cellNF: true });
     let chosen = null;
+    let legacyChosen = null;
+    const standardCandidates = [];
+    const legacyCandidates = [];
     const recognized = Object.keys(headerAliases);
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+      let sheetChosen = null;
+      if (LegacyMatrix) {
+        const inspection = LegacyMatrix.inspect(rows, sheet['!merges'] || []);
+        if (inspection) {
+          const formulaIssues = ExcelGuard.scanLegacyFormulaCache(sheet, inspection.layout);
+          if (inspection.sourceRowCount || formulaIssues.length) legacyCandidates.push({ sheetName, sheet, rows, inspection, formulaIssues });
+        }
+      }
       for (let rowIndex = 0; rowIndex < Math.min(rows.length, 20); rowIndex++) {
         const map = columnMap(rows[rowIndex]);
         const score = recognized.filter(field => map[field] != null).length;
-        if (!chosen || score > chosen.score) chosen = { sheetName, sheet, rows, headerIndex: rowIndex, map, score };
+        const candidate = { sheetName, sheet, rows, headerIndex: rowIndex, map, score };
+        if (!sheetChosen || score > sheetChosen.score) sheetChosen = candidate;
+        if (!chosen || score > chosen.score) chosen = candidate;
       }
+      if (sheetChosen && !Autofill.headerIssues(sheetChosen.map).length) standardCandidates.push(sheetChosen);
+    }
+    const importCandidates = [
+      ...standardCandidates.map(candidate => `標準格式「${candidate.sheetName}」`),
+      ...legacyCandidates.map(candidate => `案件分配表「${candidate.sheetName}」`)
+    ];
+    if (importCandidates.length > 1) {
+      throw new Error(`偵測到多個可匯入工作表：${importCandidates.join('、')}。為避免漏匯或重複，請將要匯入的工作表另存成單一活頁簿後再試。`);
+    }
+    if (standardCandidates.length === 1) chosen = standardCandidates[0];
+    if (legacyCandidates.length === 1) legacyChosen = legacyCandidates[0];
+    if (legacyChosen?.formulaIssues.length) {
+      const locations = legacyChosen.formulaIssues.slice(0, 8).map(item => item.address).join('、');
+      const extra = legacyChosen.formulaIssues.length > 8 ? `等 ${legacyChosen.formulaIssues.length} 格` : '';
+      throw new Error(`工作表「${legacyChosen.sheetName}」的 ${locations}${extra} 含公式但沒有可讀取的計算結果。請先用 Excel 或 Google 試算表開啟、重新計算並儲存後再匯入。`);
     }
     if (!chosen) throw new Error('Excel 沒有可讀取的工作表。');
     const headerIssues = Autofill.headerIssues(chosen.map);
+    if (headerIssues.length && legacyChosen) return parseLegacyCandidate(file, legacyChosen, legacyOptions, fileFingerprint);
     if (headerIssues.length) throw new Error(`缺少無法自動推斷的欄位：${headerIssues.join('、')}。請下載範本確認格式。`);
 
     const valid = [], errors = [], duplicates = [], autofills = [];
@@ -610,7 +816,8 @@
         reason: '展開 Excel 合併儲存格',
         estimated: false
       }));
-      const rowAutofills = [...mergedFills, ...completed.autofills].map(item => ({ ...item, row: index + 1, duration_unit: input.duration_unit }));
+      const sourceRef = `ROW${index + 1}`;
+      const rowAutofills = [...mergedFills, ...completed.autofills].map(item => ({ ...item, row: index + 1, source_ref: sourceRef, duration_unit: input.duration_unit }));
       autofills.push(...rowAutofills);
       if (!Autofill.isMissing(input.maturity_date) && !Autofill.isMissing(input.duration_value)) {
         const computedMaturity = Core.addDuration(input.start_date, input.duration_value, input.duration_unit);
@@ -624,63 +831,302 @@
         errors.push({ row: index + 1, message: checked.errors.join('、') });
         continue;
       }
-      const signature = [input.investor_name,input.project_name,input.start_date,input.amount,input.duration_value,input.duration_unit,input.interest_rate,input.net_profit].map(value => String(value).toLocaleLowerCase('zh-TW')).join('|');
-      if (seen.has(signature) || DB.isDuplicate(input)) {
-        duplicates.push({ row: index + 1, input });
+      const normalizedInput = checked.value;
+      const importSource = {
+        file_sha256: fileFingerprint,
+        filename: file.name,
+        provider: file._import_provider || 'local_file',
+        document_id: file._import_document_id || '',
+        sheet_name: chosen.sheetName,
+        source_ref: sourceRef,
+        source_row: index + 1,
+        source_column: ''
+      };
+      const sourceKey = `${chosen.sheetName}|${sourceRef}`;
+      if (seen.has(sourceKey)) {
+        errors.push({ row: index + 1, message: '同一來源列重複產生資料，已阻擋整批匯入。' });
         continue;
       }
-      seen.add(signature);
-      valid.push({ ...input, source_row: index + 1, _autofills: rowAutofills });
+      seen.add(sourceKey);
+      const importStatus = DB.importStatus(normalizedInput, importSource);
+      if (importStatus.status === 'conflict') {
+        errors.push({ row: index + 1, message: importConflictMessage(importStatus) });
+        continue;
+      }
+      if (importStatus.status === 'duplicate') {
+        duplicates.push({ row: index + 1, source_ref: sourceRef, input: normalizedInput });
+        continue;
+      }
+      valid.push({ ...normalizedInput, source_row: index + 1, source_ref: sourceRef, _import_source: importSource, _autofills: rowAutofills });
     }
-    return { filename: file.name, sheetName: chosen.sheetName, valid, errors, duplicates, autofills };
+    return { filename: file.name, sheetName: chosen.sheetName, format: 'standard', valid, errors, duplicates, autofills, warnings: [] };
+  }
+
+  function renderLegacyProfile(result) {
+    parsedImport = null;
+    const legacy = result.legacy;
+    const defaults = legacyProfileOptions || {};
+    const mismatchRows = legacy.mismatches.map(item => item.row).join('、');
+    const unresolved = legacy.invalidAllocationCount + legacy.unallocatedCount + legacy.orphanAllocationColumnCount + legacy.duplicateHeaderCount;
+    const selectedScale = value => Number(defaults.amount_scale) === value ? 'selected' : '';
+    const selectedUnit = value => (defaults.duration_unit || 'month') === value ? 'selected' : '';
+    $('#importPreview').innerHTML = `
+      <div id="legacyDetectedCard" class="legacy-detected" tabindex="-1">
+        <div><span class="status-pill active">已辨識舊版案件分配表</span><h3>${legacy.sourceRowCount} 個來源列將展開為 ${legacy.investmentCount} 筆投資</h3><p>${esc(result.filename)}｜工作表「${esc(result.sheetName)}」<br>投資人取自橫向欄名，投資金額取各投資人分配格；旁邊的撥款彙總區已排除。</p></div>
+        <dl><div><dt>投資人欄</dt><dd>${legacy.investorColumnCount}</dd></div><div><dt>有配置欄</dt><dd>${legacy.usedInvestorColumnCount}</dd></div><div><dt>來源列缺期間</dt><dd>${legacy.missingDurationCount}</dd></div><div><dt>來源列缺利率</dt><dd>${legacy.missingRateCount}</dd></div></dl>
+      </div>
+      ${unresolved ? `<div class="notice error" role="alert">原表另有 ${unresolved} 個投資人欄名或分配格問題，套用設定後會列出精確位置。</div>` : ''}
+      <form id="legacyImportProfile" class="legacy-profile">
+        <div class="legacy-profile-head"><div><h3>一次補齊轉換設定</h3><p>以下設定皆為必填。系統會套用到缺值並估算淨收益；備註中的期間或百分比只會列為候選，除非您在下方明確選擇採用。</p></div></div>
+        <div class="form-grid legacy-profile-grid">
+          <div class="field"><label for="legacyAmountScale">原表金額單位</label><select id="legacyAmountScale" required><option value="">請選擇</option><option value="1" ${selectedScale(1)}>原值／元（× 1）</option><option value="1000" ${selectedScale(1000)}>千元（× 1,000）</option><option value="10000" ${selectedScale(10000)}>萬元（× 10,000）</option></select></div>
+          <div class="field"><label for="legacyDurationValue">缺值的預設持續時間</label><div class="input-pair"><input id="legacyDurationValue" class="input" type="number" min="1" step="1" value="${esc(defaults.duration_value ?? '')}" required><select id="legacyDurationUnit" aria-label="持續時間單位"><option value="month" ${selectedUnit('month')}>個月</option><option value="day" ${selectedUnit('day')}>天</option></select></div></div>
+          <div class="field"><label for="legacyInterestRate">缺值的預設整期利率（%）</label><div class="input-suffix"><input id="legacyInterestRate" class="input" type="number" step="0.0001" value="${esc(defaults.interest_rate ?? '')}" required><span>%</span></div></div>
+          ${legacy.missingStartRows.map(item => `<div class="field"><label for="legacyStart${item.row}">Excel 第 ${item.row} 列${item.issue === 'invalid' ? '日期格式無效' : '缺少開始日期'}</label><input id="legacyStart${item.row}" class="input" type="date" data-legacy-start-row="${item.row}" value="${esc(defaults.start_dates?.[item.row] ?? '')}" aria-describedby="legacyStartHelp${item.row}" required><small id="legacyStartHelp${item.row}">${esc(item.project_name)} 沒有可安全採用的日期，因此需由您指定。</small></div>`).join('')}
+        </div>
+        ${legacy.durationCandidateCount || legacy.rateCandidateCount ? `<label class="legacy-confirm note-candidate-confirm"><input id="legacyNoteTerms" type="checkbox" ${defaults.use_note_terms ? 'checked' : ''}><span>優先採用備註辨識候選（期間 ${legacy.durationCandidateCount} 列、利率 ${legacy.rateCandidateCount} 列）；未勾選時一律使用本批預設。候選仍會在預覽標示，請逐筆核對。</span></label>` : ''}
+        <label class="legacy-confirm"><input id="legacyMappingAck" type="checkbox" ${defaults.accept_mapping ? 'checked' : ''} required><span>我確認 F:N 橫向欄名代表正式投資人名稱，B 欄「起租案名/同仁」可作為正式投資案名；若原表使用縮寫，請先回 Excel 補成要在歷史報表顯示的名稱。</span></label>
+        ${legacy.mismatches.length ? `<section class="legacy-reconciliation" aria-labelledby="legacyReconciliationTitle"><h4 id="legacyReconciliationTitle">需確認的原表差異</h4><div class="legacy-reconciliation-scroll" tabindex="0" role="region" aria-label="參與總額差異明細"><table><thead><tr><th>Excel 列</th><th>原參與總額</th><th>投資人明細合計</th><th>差額（明細－總額）</th></tr></thead><tbody>${legacy.mismatches.map(item => `<tr><td>${item.row}</td><td>${number(item.stated_total)}</td><td>${number(item.allocation_total)}</td><td>${number(item.allocation_total - item.stated_total)}</td></tr>`).join('')}</tbody></table></div></section><label class="legacy-confirm"><input id="legacyMismatchAck" type="checkbox" ${defaults.accept_mismatches ? 'checked' : ''} required><span>我確認第 ${mismatchRows} 列以各投資人分配格為匯入依據，不自動攤平差額。</span></label>` : ''}
+        <div class="notice warn">請核對來源日期與預設期間；已屆滿的資料匯入後會出現在「到期未結算」清單，但仍需另按一鍵結算才會建立收益報表。</div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">套用設定並產生 ${legacy.investmentCount} 筆預覽</button></div>
+      </form>`;
+    announceImport(`已辨識案件分配表，${legacy.sourceRowCount} 個來源列可展開為 ${legacy.investmentCount} 筆投資，請完成轉換設定。`);
+    requestAnimationFrame(() => $('#legacyDetectedCard')?.focus({ preventScroll: true }));
+    $('#legacyImportProfile').addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      if (!form.reportValidity() || !pendingImportFile) return;
+      const startDates = {};
+      $$('[data-legacy-start-row]').forEach(input => { startDates[input.dataset.legacyStartRow] = input.value; });
+      const options = {
+        amount_scale: Number($('#legacyAmountScale').value),
+        duration_value: Number($('#legacyDurationValue').value),
+        duration_unit: $('#legacyDurationUnit').value,
+        interest_rate: $('#legacyInterestRate').value,
+        use_note_terms: Boolean($('#legacyNoteTerms')?.checked),
+        accept_mapping: $('#legacyMappingAck').checked,
+        start_dates: startDates,
+        accept_mismatches: !legacy.mismatches.length || $('#legacyMismatchAck').checked
+      };
+      legacyProfileOptions = options;
+      announceImport('正在展開投資人欄、補齊資料並重新驗證。');
+      $('#importPreview').innerHTML = '<div class="notice" role="status">正在展開投資人欄、補齊資料並重新驗證…</div>';
+      try { renderImportPreview(await parseWorkbook(pendingImportFile, options)); }
+      catch (error) {
+        const message = error.message || 'Excel 轉換失敗。';
+        announceImport(message);
+        $('#importPreview').innerHTML = `<div class="notice error" role="alert">${esc(message)}</div>`;
+      }
+    });
   }
 
   function renderImportPreview(result) {
+    if (result.needsProfile) { renderLegacyProfile(result); return; }
     parsedImport = result;
     const blocked = result.errors.length > 0 || result.valid.length === 0;
     const fills = result.autofills || [];
-    const autofillRows = new Set(fills.map(item => item.row)).size;
-    const noticeClass = result.errors.length ? 'error' : fills.length ? 'warn' : '';
+    const autofillRows = new Set(fills.map(item => item.source_ref || `row-${item.row}`)).size;
+    const warnings = result.warnings || [];
+    const isLegacy = result.format === 'legacy_matrix';
+    const principalTotal = result.valid.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const profitTotal = result.valid.reduce((sum, row) => sum + Number(row.net_profit || 0), 0);
+    const dueCount = result.valid.filter(row => Core.isMatured({ ...row, status: 'active' }, todayLocal())).length;
+    const previewRows = isLegacy ? result.valid : result.valid.slice(0, 12);
+    const visibleCount = previewRows.length;
+    const noticeClass = result.errors.length ? 'error' : fills.length || warnings.length || dueCount ? 'warn' : '';
     const noticeText = result.errors.length
       ? '仍有無法補齊的資料，請先修正；系統不會部分匯入。'
-      : fills.length
-        ? `已自動補齊 ${autofillRows} 列、${fills.length} 個欄位，請核對橘色標示後再匯入。`
-        : '格式檢查通過，沒有需要補齊的欄位。';
+      : warnings.length && fills.length
+        ? `已自動補齊 ${autofillRows} 筆投資、${fills.length} 個欄位，另有 ${warnings.length} 個警告；請全部核對後再匯入。`
+        : warnings.length
+          ? `格式可匯入，但仍有 ${warnings.length} 個警告需要核對。`
+          : fills.length
+            ? `已自動補齊 ${autofillRows} 筆投資、${fills.length} 個欄位，請核對橘色標示後再匯入。`
+            : '格式檢查通過，沒有需要補齊的欄位。';
     $('#importPreview').innerHTML = `<div class="import-summary"><div class="import-stat"><span>可匯入</span><strong>${result.valid.length}</strong></div><div class="import-stat"><span>自動補齊欄位</span><strong>${fills.length}</strong></div><div class="import-stat"><span>重複略過</span><strong>${result.duplicates.length}</strong></div><div class="import-stat"><span>仍需修正</span><strong>${result.errors.length}</strong></div></div>
-      <div class="notice ${noticeClass}">${esc(result.filename)}｜工作表「${esc(result.sheetName)}」：${noticeText}</div>
-      ${result.errors.length ? `<ul class="import-errors">${result.errors.map(error => `<li>第 ${error.row} 列：${esc(error.message)}</li>`).join('')}</ul>` : ''}
-      ${result.valid.length ? `<div class="import-preview-table"><table><thead><tr><th>Excel 列</th><th>投資人</th><th>投資案</th><th>金額</th><th>開始</th><th>期間</th><th>利率</th><th>淨收益</th></tr></thead><tbody>${result.valid.slice(0, 12).map(row => `<tr><td>${row.source_row}</td>${renderImportCell(row,'investor_name',esc(row.investor_name))}${renderImportCell(row,'project_name',esc(row.project_name))}${renderImportCell(row,'amount',money(row.amount))}${renderImportCell(row,'start_date',displayDate(row.start_date))}${renderImportCell(row,'duration_value',durationLabel(row))}${renderImportCell(row,'interest_rate',pct(row.interest_rate))}${renderImportCell(row,'net_profit',money(row.net_profit))}</tr>`).join('')}</tbody></table></div>` : ''}
-      ${fills.length ? `<details class="import-autofill-details"><summary>查看全部 ${fills.length} 個自動補齊項目</summary><ul>${fills.map(item => `<li>第 ${item.row} 列・${esc(item.label)}：${esc(importAutofillValue(item))}（${esc(item.reason)}）${item.estimated ? '－請核對估算值' : ''}</li>`).join('')}</ul></details>` : ''}
-      <div class="form-actions"><button id="confirmImportBtn" class="btn btn-primary" type="button" ${blocked ? 'disabled' : ''}>${fills.length ? '確認補齊並' : '確認'}匯入 ${result.valid.length} 筆</button></div>`;
+      ${isLegacy ? `<div class="legacy-financial-summary"><div><span>轉換後本金合計</span><strong>${money(principalTotal)}</strong></div><div><span>估算淨收益合計</span><strong>${money(profitTotal)}</strong></div><div class="${dueCount ? 'is-due' : ''}"><span>匯入後已到期</span><strong>${dueCount} 筆</strong></div></div>` : ''}
+      <div id="importResultNotice" class="notice ${noticeClass}" tabindex="-1">${esc(result.filename)}｜工作表「${esc(result.sheetName)}」${isLegacy ? '｜案件分配表已展開' : ''}：${noticeText}</div>
+      ${dueCount && isLegacy ? `<div class="notice warn"><strong>${dueCount} 筆在今天以前已到期。</strong> 匯入不會自動結算；請先核對日期、期間與淨收益，再到一鍵結算頁操作。</div>` : ''}
+      ${result.errors.length ? `<ul class="import-errors" tabindex="0" role="region" aria-label="匯入錯誤">${result.errors.map(error => `<li>${error.source_ref ? esc(error.source_ref) : `第 ${error.row} 列`}：${esc(error.message)}</li>`).join('')}</ul>` : ''}
+      ${warnings.length ? `<ul class="import-warnings" tabindex="0" role="region" aria-label="匯入警告">${warnings.map(warning => `<li>第 ${warning.row} 列：${esc(warning.message)}</li>`).join('')}</ul>` : ''}
+      ${result.valid.length ? `<p class="preview-count">${isLegacy ? `目前顯示全部 ${visibleCount} 筆轉換明細` : `目前顯示前 ${visibleCount} 筆，共 ${result.valid.length} 筆`}；補齊來源可在下方展開查看。</p><div class="import-preview-table" tabindex="0" role="region" aria-label="投資匯入預覽，可左右捲動"><table><thead><tr><th>Excel 位置</th><th>投資人</th><th>投資案</th><th>金額</th><th>開始</th><th>期間</th><th>到期</th><th>利率</th><th>淨收益</th><th>匯入後狀態</th></tr></thead><tbody>${previewRows.map(row => `<tr><td>${esc(row.source_ref || row.source_row)}</td>${renderImportCell(row,'investor_name',esc(row.investor_name))}${renderImportCell(row,'project_name',esc(row.project_name))}${renderImportCell(row,'amount',money(row.amount))}${renderImportCell(row,'start_date',displayDate(row.start_date))}${renderImportCell(row,'duration_value',durationLabel(row))}<td>${displayDate(row.maturity_date)}</td>${renderImportCell(row,'interest_rate',pct(row.interest_rate))}${renderImportCell(row,'net_profit',money(row.net_profit))}<td>${statusPill(investmentViewStatus(row))}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      ${fills.length ? `<details class="import-autofill-details"><summary>查看全部 ${fills.length} 個自動補齊項目</summary><ul tabindex="0">${fills.map(item => `<li>${item.source_ref ? esc(item.source_ref) : `第 ${item.row} 列`}・${esc(item.label)}：${esc(importAutofillValue(item))}（${esc(item.reason)}）${item.estimated ? '－請核對候選或估算值' : ''}</li>`).join('')}</ul></details>` : ''}
+      ${isLegacy && result.valid.length && !result.errors.length ? `<label class="legacy-confirm final-confirm"><input id="legacyFinalAck" type="checkbox" required><span>我已核對金額單位、預設期間、預設利率、${result.legacy?.useNoteTerms ? '已採用的備註辨識值' : '本批未採用備註候選'}、估算淨收益與 ${dueCount} 筆已到期狀態，確認以目前預覽匯入。</span></label>` : ''}
+      <div class="form-actions">${isLegacy ? '<button id="modifyLegacySettings" class="btn btn-soft" type="button">修改轉換設定</button>' : ''}<button id="confirmImportBtn" class="btn btn-primary" type="button" ${blocked || isLegacy ? 'disabled' : ''}>${fills.length ? '確認補齊並' : '確認'}匯入 ${result.valid.length} 筆</button></div>`;
+    if (isLegacy) {
+      const acknowledgement = $('#legacyFinalAck');
+      const confirmButton = $('#confirmImportBtn');
+      acknowledgement?.addEventListener('change', () => { confirmButton.disabled = blocked || !acknowledgement.checked; });
+      $('#modifyLegacySettings')?.addEventListener('click', async () => {
+        announceImport('正在返回案件分配表轉換設定。');
+        try { renderImportPreview(await parseWorkbook(pendingImportFile)); }
+        catch (error) { toast(error.message || '無法重新載入轉換設定。', 'error'); }
+      });
+    }
+    const announcement = result.errors.length
+      ? `Excel 預覽仍有 ${result.errors.length} 個錯誤。`
+      : `Excel 預覽完成，可匯入 ${result.valid.length} 筆，${warnings.length} 個警告，匯入後 ${dueCount} 筆已到期。`;
+    announceImport(announcement);
+    requestAnimationFrame(() => $('#importResultNotice')?.focus({ preventScroll: true }));
   }
 
   async function previewExcel(file) {
     if (!file) return;
-    $('#importPreview').innerHTML = '<div class="notice">正在解析與檢查 Excel…</div>';
+    pendingImportFile = file;
+    legacyProfileOptions = null;
+    announceImport('正在解析與檢查 Excel。');
+    $('#importPreview').innerHTML = '<div class="notice" role="status">正在解析與檢查 Excel…</div>';
     try { renderImportPreview(await parseWorkbook(file)); }
-    catch (error) { parsedImport = null; $('#importPreview').innerHTML = `<div class="notice error">${esc(error.message || 'Excel 解析失敗。')}</div>`; }
+    catch (error) {
+      parsedImport = null;
+      const message = error.message || 'Excel 解析失敗。';
+      announceImport(message);
+      $('#importPreview').innerHTML = `<div class="notice error" role="alert">${esc(message)}</div>`;
+    }
+  }
+
+  function driveConfigValidation(config) {
+    if (!DriveImport) return { valid: false, errors: ['Google Drive 匯入模組未載入。'] };
+    const result = DriveImport.validateConfig(config || {});
+    if (result === true) return { valid: true, errors: [] };
+    if (Array.isArray(result)) return { valid: result.length === 0, errors: result };
+    return { valid: Boolean(result?.valid), errors: result?.errors || [] };
+  }
+
+  function driveValidationMessage(validation) {
+    return (validation.errors || []).map(error => typeof error === 'string' ? error : error.message).filter(Boolean).join(' ');
+  }
+
+  function setDriveImportStatus(message, state = '') {
+    const status = $('#driveImportStatus');
+    status.className = `drive-status${state ? ` ${state}` : ''}`;
+    status.textContent = message;
+  }
+
+  function setDriveConfigStatus(message, state = '') {
+    const status = $('#driveConfigStatus');
+    status.className = `drive-config-status${state ? ` ${state}` : ''}`;
+    status.textContent = message;
+  }
+
+  function loadDriveConfigIntoForm() {
+    if (!DriveImport) {
+      setDriveConfigStatus('Google Drive 匯入模組未載入，請重新整理頁面。', 'error');
+      setDriveImportStatus('Google Drive 匯入目前無法使用；仍可從電腦選取 Excel。', 'error');
+      return;
+    }
+    try {
+      const config = DriveImport.loadConfig();
+      $('#driveClientId').value = config.client_id || '';
+      $('#driveApiKey').value = config.api_key || '';
+      $('#driveAppId').value = config.app_id || '';
+      const validation = driveConfigValidation(config);
+      if (validation.valid) {
+        setDriveConfigStatus('連線設定已儲存在這個瀏覽器。登入權杖只會暫存在記憶體。', 'success');
+        setDriveImportStatus('Google Drive 已完成設定；點擊按鈕登入並選取試算表。', 'success');
+      } else {
+        setDriveConfigStatus('尚未完成設定。三個欄位都必須填寫。');
+        setDriveImportStatus('Google Drive 需先完成連線設定；從電腦匯入則不需要網路。');
+      }
+    } catch (error) {
+      setDriveConfigStatus(error.message || '無法讀取 Google Drive 設定。', 'error');
+      setDriveImportStatus('無法讀取 Google Drive 設定；仍可從電腦選取 Excel。', 'error');
+    }
+  }
+
+  function openDriveSettings() {
+    switchPanel('settings');
+    $('#googleDriveSettings').scrollIntoView({ behavior: 'auto', block: 'start' });
+    $('#driveClientId').focus({ preventScroll: true });
+  }
+
+  function saveDriveConfig(event) {
+    event.preventDefault();
+    if (!DriveImport) return setDriveConfigStatus('Google Drive 匯入模組未載入。', 'error');
+    const config = {
+      client_id: $('#driveClientId').value.trim(),
+      api_key: $('#driveApiKey').value.trim(),
+      app_id: $('#driveAppId').value.trim()
+    };
+    const validation = driveConfigValidation(config);
+    if (!validation.valid) return setDriveConfigStatus(driveValidationMessage(validation) || '請完整填寫三個連線欄位。', 'error');
+    try {
+      DriveImport.saveConfig(config);
+      loadDriveConfigIntoForm();
+      toast('Google Drive 連線設定已儲存。');
+      switchPanel('import', { focus: true });
+    } catch (error) {
+      setDriveConfigStatus(error.message || '無法儲存 Google Drive 設定。', 'error');
+    }
+  }
+
+  function clearDriveConfig() {
+    if (!DriveImport) return;
+    try {
+      DriveImport.clearConfig();
+      loadDriveConfigIntoForm();
+      toast('Google Drive 連線設定已清除。');
+    } catch (error) { setDriveConfigStatus(error.message || '無法清除設定。', 'error'); }
+  }
+
+  async function importFromGoogleDrive() {
+    if (!DriveImport) return setDriveImportStatus('Google Drive 匯入模組未載入，請重新整理頁面。', 'error');
+    let config;
+    try { config = DriveImport.loadConfig(); }
+    catch (error) { return setDriveImportStatus(error.message || '無法讀取 Google Drive 設定。', 'error'); }
+    const validation = driveConfigValidation(config);
+    if (!validation.valid) {
+      setDriveImportStatus('請先完成 Google Drive 連線設定。', 'error');
+      openDriveSettings();
+      return;
+    }
+    if (!navigator.onLine) return setDriveImportStatus('目前沒有網路連線；可改用下方的本機 Excel 匯入。', 'error');
+    const button = $('#googleDriveImportBtn');
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = '正在連線…';
+    setDriveImportStatus('正在取得 Google 授權並開啟雲端硬碟選檔器…', 'busy');
+    try {
+      const file = await DriveImport.pickFile(config);
+      switchPanel('import', { updateUrl: true, focus: true });
+      setDriveImportStatus(`已讀取「${file.name}」，正在進行 Excel 預覽與自動補齊。`, 'success');
+      await previewExcel(file);
+    } catch (error) {
+      if (['AUTH_CANCELLED','PICKER_CANCELLED'].includes(error.code)) setDriveImportStatus('已取消 Google Drive 選檔，資料沒有變更。');
+      else if (error.code === 'CONFIG_MISSING') { setDriveImportStatus('Google Drive 設定不完整，請重新設定。', 'error'); openDriveSettings(); }
+      else setDriveImportStatus(error.message || '無法從 Google Drive 讀取檔案。', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
   }
 
   async function confirmImport() {
     if (!parsedImport || parsedImport.errors.length || !parsedImport.valid.length) return;
+    if (parsedImport.format === 'legacy_matrix' && !$('#legacyFinalAck')?.checked) {
+      toast('請先核對轉換摘要並勾選確認。', 'error');
+      return;
+    }
     const button = $('#confirmImportBtn');
     button.disabled = true;
     button.textContent = '匯入中…';
     try {
       const autofillFieldCount = parsedImport.autofills?.length || 0;
-      const autofillRowCount = new Set((parsedImport.autofills || []).map(item => item.row)).size;
+      const autofillRowCount = new Set((parsedImport.autofills || []).map(item => item.source_ref || `row-${item.row}`)).size;
       const result = await DB.importInvestments(parsedImport.valid);
       await refresh();
       $('#importPreview').innerHTML = `<div class="settlement-success"><h3>Excel 匯入完成</h3><p>已新增 ${result.imported.length} 筆；另有 ${result.duplicates.length + parsedImport.duplicates.length} 筆重複資料被安全略過。${autofillFieldCount ? `其中 ${autofillRowCount} 筆資料共自動補齊 ${autofillFieldCount} 個欄位。` : ''}</p><div class="toolbar"><button class="btn btn-success" type="button" data-open-panel="investments">查看投資資料</button></div></div>`;
       $('#xlsxInput').value = '';
       parsedImport = null;
+      pendingImportFile = null;
+      legacyProfileOptions = null;
       toast(`已匯入 ${result.imported.length} 筆投資資料。`);
     } catch (error) { toast(error.message || '匯入失敗。', 'error'); button.disabled = false; button.textContent = '確認匯入'; }
   }
 
   document.addEventListener('click', event => {
     const panelButton = event.target.closest('[data-open-panel]');
-    if (panelButton) switchPanel(panelButton.dataset.openPanel);
+    if (panelButton) switchPanel(panelButton.dataset.openPanel, { focus: panelButton.id === 'heroImportBtn' });
     const editButton = event.target.closest('[data-edit]');
     if (editButton) openInvestmentModal(snapshot.investments.find(item => item.id === editButton.dataset.edit));
     const deleteButton = event.target.closest('[data-delete]');
@@ -692,7 +1138,10 @@
     if (event.target.closest('#confirmImportBtn')) confirmImport();
   });
 
-  $$('.nav-btn[data-panel]').forEach(button => button.addEventListener('click', () => switchPanel(button.dataset.panel)));
+  $$('.nav-btn[data-panel]').forEach(button => button.addEventListener('click', () => switchPanel(button.dataset.panel, { focus: button.dataset.panel === 'import' })));
+  window.addEventListener('hashchange', () => {
+    if (appReady) switchPanel(panelFromLocation(), { updateUrl: false, focus: panelFromLocation() === 'import' });
+  });
   $('#heroAddBtn').addEventListener('click', () => openInvestmentModal());
   $('#tableAddBtn').addEventListener('click', () => openInvestmentModal());
   $$('[data-close-modal]').forEach(button => button.addEventListener('click', closeInvestmentModal));
@@ -707,6 +1156,10 @@
   $('#batchSelect').addEventListener('change', event => { activeBatchId = event.target.value; renderReports(); });
   $('#exportBatchBtn').addEventListener('click', exportBatchExcel);
   $('#downloadTemplateBtn').addEventListener('click', downloadTemplate);
+  $('#googleDriveImportBtn').addEventListener('click', importFromGoogleDrive);
+  $('#openDriveSettingsBtn').addEventListener('click', openDriveSettings);
+  $('#driveConfigForm').addEventListener('submit', saveDriveConfig);
+  $('#clearDriveConfigBtn').addEventListener('click', clearDriveConfig);
   $('#quickBackupBtn').addEventListener('click', exportBackup);
   $('#exportBackupBtn').addEventListener('click', exportBackup);
   $('#restoreInput').addEventListener('change', event => restoreBackup(event.target.files?.[0]));
@@ -735,11 +1188,15 @@
   $('#xlsxInput').addEventListener('change', event => previewExcel(event.target.files?.[0]));
 
   $('#settlementAsOf').value = todayLocal();
+  loadDriveConfigIntoForm();
   try {
     await DB.init();
     snapshot = DB.snapshot();
     updateStorageStatus();
     renderAll();
+    appReady = true;
+    const initialPanel = panelFromLocation();
+    switchPanel(initialPanel, { updateUrl: false, focus: initialPanel === 'import', scroll: initialPanel !== 'overview' });
     if (DB.backend === 'sqlite') clearNotice();
   } catch (error) {
     showNotice(error.message || '系統初始化失敗。', 'error');

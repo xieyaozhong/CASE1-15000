@@ -8,6 +8,7 @@
   const LABELS = {
     investor_name: '投資人名',
     project_name: '投資案名',
+    amount: '投資金額',
     start_date: '開始時間',
     maturity_date: '到期日',
     duration_value: '持續時間',
