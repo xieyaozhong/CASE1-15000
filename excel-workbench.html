@@ -11,11 +11,12 @@
   <script defer src="assets/import-identity.js"></script>
   <script defer src="assets/local-manager-db.js"></script>
   <script defer src="assets/excel-workbench.js"></script>
+  <script defer src="assets/excel-template-preserve.js"></script>
 </head>
 <body>
   <header class="excel-titlebar">
     <div class="excel-brand"><span class="excel-logo">X</span><div><strong>投資收益結算表</strong><small>CASE1-15000 · Excel 工作台</small></div></div>
-    <div class="title-actions"><a href="admin.html" class="ghost-btn">管理中心</a><button id="exportBtn" class="excel-btn">匯出 Excel</button></div>
+    <div class="title-actions"><a href="admin.html" class="ghost-btn">管理中心</a><button id="exportOriginalBtn" class="ghost-btn">依原版型匯出</button><button id="exportBtn" class="excel-btn">標準匯出</button></div>
   </header>
 
   <nav class="ribbon-tabs" aria-label="功能分頁"><button class="active">常用</button><button>資料</button><button>公式</button><button>檢視</button></nav>
@@ -26,7 +27,8 @@
       <button id="importExcelBtn" class="ribbon-button"><span class="icon">▦</span><span>匯入原 Excel</span></button>
       <button id="refreshBtn" class="ribbon-button"><span class="icon">↻</span><span>重新計算</span></button>
       <button id="settleBtn" class="ribbon-button emphasis"><span class="icon">✓</span><span>結算到期</span></button>
-      <button id="exportBtn2" class="ribbon-button"><span class="icon">⇩</span><span>匯出 Excel</span></button>
+      <button id="exportOriginalBtnRibbon" class="ribbon-button" onclick="document.getElementById('exportOriginalBtn').click()"><span class="icon">▤</span><span>原版型匯出</span></button>
+      <button id="exportBtn2" class="ribbon-button"><span class="icon">⇩</span><span>標準匯出</span></button>
     </div>
     <div class="ribbon-group compact-controls">
       <label>結算基準日<input id="asOfDate" type="date"></label>
@@ -40,7 +42,7 @@
 
   <main class="sheet-shell">
     <section class="summary-strip"><div><span>投資筆數</span><strong id="sumRows">0</strong></div><div><span>本金合計</span><strong id="sumPrincipal">NT$0</strong></div><div><span>到期筆數</span><strong id="sumDue">0</strong></div><div><span>預計收益</span><strong id="sumProfit">NT$0</strong></div></section>
-    <section id="actionHint" class="action-hint"><strong>今日流程</strong><span>① 匯入／檢查資料</span><span>② 自動試算</span><span>③ 結算到期</span><span>④ 匯出 Excel</span><small>雙擊白色儲存格可直接修改未結算資料</small></section>
+    <section id="actionHint" class="action-hint"><strong>今日流程</strong><span>① 匯入／檢查資料</span><span>② 自動試算</span><span>③ 結算到期</span><span>④ 匯出 Excel</span><small id="templateState">尚未記住原 Excel 版型</small></section>
     <div class="sheet-scroll">
       <table id="excelTable" class="excel-grid">
         <thead><tr class="letters"><th class="corner"></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th><th>I</th><th>J</th></tr><tr class="headers"><th>#</th><th>投資人</th><th>投資案</th><th>投資金額</th><th>開始日</th><th>期間</th><th>到期日</th><th>利率</th><th>淨收益</th><th>狀態</th><th>備註</th></tr></thead>
