@@ -18,13 +18,12 @@
     <div class="title-actions"><a href="admin.html" class="ghost-btn">管理中心</a><button id="exportBtn" class="excel-btn">匯出 Excel</button></div>
   </header>
 
-  <nav class="ribbon-tabs" aria-label="功能分頁">
-    <button class="active">常用</button><button>資料</button><button>公式</button><button>檢視</button>
-  </nav>
+  <nav class="ribbon-tabs" aria-label="功能分頁"><button class="active">常用</button><button>資料</button><button>公式</button><button>檢視</button></nav>
 
   <section class="ribbon">
     <div class="ribbon-group primary-actions">
       <button id="dailyRunBtn" class="ribbon-button hero-action"><span class="icon">▶</span><span>一鍵完成今日作業</span></button>
+      <button id="importExcelBtn" class="ribbon-button"><span class="icon">▦</span><span>匯入原 Excel</span></button>
       <button id="refreshBtn" class="ribbon-button"><span class="icon">↻</span><span>重新計算</span></button>
       <button id="settleBtn" class="ribbon-button emphasis"><span class="icon">✓</span><span>結算到期</span></button>
       <button id="exportBtn2" class="ribbon-button"><span class="icon">⇩</span><span>匯出 Excel</span></button>
@@ -37,34 +36,30 @@
     </div>
   </section>
 
-  <section class="formula-bar">
-    <div id="nameBox" class="name-box">A1</div><div class="fx">fx</div><div id="formulaText" class="formula-input">= 點一下儲存格查看內容；雙擊可直接修改未結算資料</div>
-  </section>
+  <section class="formula-bar"><div id="nameBox" class="name-box">A1</div><div class="fx">fx</div><div id="formulaText" class="formula-input">= 點一下儲存格查看內容；雙擊可直接修改未結算資料</div></section>
 
   <main class="sheet-shell">
-    <section class="summary-strip">
-      <div><span>投資筆數</span><strong id="sumRows">0</strong></div>
-      <div><span>本金合計</span><strong id="sumPrincipal">NT$0</strong></div>
-      <div><span>到期筆數</span><strong id="sumDue">0</strong></div>
-      <div><span>預計收益</span><strong id="sumProfit">NT$0</strong></div>
-    </section>
-
-    <section id="actionHint" class="action-hint"><strong>今日流程</strong><span>① 檢查資料</span><span>② 自動試算</span><span>③ 結算到期</span><span>④ 匯出 Excel</span><small>雙擊白色儲存格可直接修改未結算資料</small></section>
-
+    <section class="summary-strip"><div><span>投資筆數</span><strong id="sumRows">0</strong></div><div><span>本金合計</span><strong id="sumPrincipal">NT$0</strong></div><div><span>到期筆數</span><strong id="sumDue">0</strong></div><div><span>預計收益</span><strong id="sumProfit">NT$0</strong></div></section>
+    <section id="actionHint" class="action-hint"><strong>今日流程</strong><span>① 匯入／檢查資料</span><span>② 自動試算</span><span>③ 結算到期</span><span>④ 匯出 Excel</span><small>雙擊白色儲存格可直接修改未結算資料</small></section>
     <div class="sheet-scroll">
       <table id="excelTable" class="excel-grid">
-        <thead>
-          <tr class="letters"><th class="corner"></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th><th>I</th><th>J</th></tr>
-          <tr class="headers"><th>#</th><th>投資人</th><th>投資案</th><th>投資金額</th><th>開始日</th><th>期間</th><th>到期日</th><th>利率</th><th>淨收益</th><th>狀態</th><th>備註</th></tr>
-        </thead>
+        <thead><tr class="letters"><th class="corner"></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th><th>I</th><th>J</th></tr><tr class="headers"><th>#</th><th>投資人</th><th>投資案</th><th>投資金額</th><th>開始日</th><th>期間</th><th>到期日</th><th>利率</th><th>淨收益</th><th>狀態</th><th>備註</th></tr></thead>
         <tbody id="sheetBody"></tbody>
         <tfoot><tr><th>Σ</th><th colspan="2">合計</th><th id="footPrincipal">NT$0</th><th colspan="4"></th><th id="footProfit">NT$0</th><th colspan="2"></th></tr></tfoot>
       </table>
     </div>
-
     <div class="sheet-tabs"><button class="active">投資明細</button><button id="historyTab">結算歷史</button><span id="saveState">讀取資料中…</span></div>
   </main>
 
+  <input id="excelFileInput" type="file" accept=".xlsx,.xls,.csv" hidden>
+  <div id="importModal" class="modal-backdrop" hidden>
+    <section class="import-dialog" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+      <header><div><strong id="importTitle">匯入原 Excel</strong><small id="importFileMeta">系統會先辨識欄位，不會直接寫入</small></div><button id="closeImportBtn" class="dialog-close" type="button">×</button></header>
+      <div class="import-status" id="importStatus">選擇 Excel 後，系統會自動尋找表頭並辨識投資人、案件、本金、日期、期間、利率與收益。</div>
+      <div class="import-preview-wrap"><table id="importPreview" class="import-preview"></table></div>
+      <footer><span id="importSummary">尚未選擇檔案</span><div><button id="chooseAnotherBtn" class="dialog-btn" type="button">重新選擇</button><button id="confirmImportBtn" class="dialog-btn primary" type="button" disabled>一鍵匯入可辨識資料</button></div></footer>
+    </section>
+  </div>
   <div id="toast" class="toast" hidden></div>
 </body>
 </html>
