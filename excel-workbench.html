@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="assets/matrix-workbook-view.css">
   <link rel="stylesheet" href="assets/standard-template-view.css">
   <link rel="stylesheet" href="assets/standard-template-enhance.css">
+  <link rel="stylesheet" href="assets/standard-master-flow.css">
   <script defer src="assets/vendor/xlsx.full.min.js"></script>
   <script defer src="assets/settlement-core.js"></script>
   <script defer src="assets/import-identity.js"></script>
@@ -20,6 +21,7 @@
   <script defer src="assets/matrix-validation-helper.js"></script>
   <script defer src="assets/standard-template-view.js"></script>
   <script defer src="assets/standard-template-enhance.js"></script>
+  <script defer src="assets/standard-master-flow.js"></script>
 </head>
 <body>
   <header class="excel-titlebar">
@@ -50,7 +52,7 @@
 
   <main class="sheet-shell">
     <section class="summary-strip"><div><span>投資筆數</span><strong id="sumRows">0</strong></div><div><span>本金合計</span><strong id="sumPrincipal">NT$0</strong></div><div><span>到期筆數</span><strong id="sumDue">0</strong></div><div><span>預計收益</span><strong id="sumProfit">NT$0</strong></div></section>
-    <section id="actionHint" class="action-hint"><strong>今日流程</strong><span>① 匯入／檢查資料</span><span>② 標準範本補齊</span><span>③ 結算到期</span><span>④ 匯出 Excel</span><small id="templateState">尚未記住原 Excel 版型</small></section>
+    <section id="actionHint" class="action-hint"><strong>今日流程</strong><span>① 標準表格補齊</span><span>② 寫入投資明細</span><span>③ 依標準表結算</span><span>④ 匯出 Excel</span><small id="templateState">尚未記住原 Excel 版型</small></section>
     <div class="sheet-scroll">
       <table id="excelTable" class="excel-grid">
         <thead><tr class="letters"><th class="corner"></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th><th>I</th><th>J</th></tr><tr class="headers"><th>#</th><th>投資人</th><th>投資案</th><th>投資金額</th><th>開始日</th><th>期間</th><th>到期日</th><th>利率</th><th>淨收益</th><th>狀態</th><th>備註</th></tr></thead>
