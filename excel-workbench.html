@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#217346">
+  <title>Excel 結算工作台</title>
+  <link rel="stylesheet" href="assets/excel-workbench.css">
+  <script defer src="assets/vendor/xlsx.full.min.js"></script>
+  <script defer src="assets/settlement-core.js"></script>
+  <script defer src="assets/import-identity.js"></script>
+  <script defer src="assets/local-manager-db.js"></script>
+  <script defer src="assets/excel-workbench.js"></script>
+</head>
+<body>
+  <header class="excel-titlebar">
+    <div class="excel-brand"><span class="excel-logo">X</span><div><strong>投資收益結算表</strong><small>CASE1-15000 · Excel 工作台</small></div></div>
+    <div class="title-actions"><a href="admin.html" class="ghost-btn">管理中心</a><button id="exportBtn" class="excel-btn">匯出 Excel</button></div>
+  </header>
+
+  <nav class="ribbon-tabs" aria-label="功能分頁">
+    <button class="active">常用</button><button>資料</button><button>公式</button><button>檢視</button>
+  </nav>
+
+  <section class="ribbon">
+    <div class="ribbon-group primary-actions">
+      <button id="refreshBtn" class="ribbon-button"><span class="icon">↻</span><span>重新計算</span></button>
+      <button id="settleBtn" class="ribbon-button emphasis"><span class="icon">✓</span><span>一鍵結算到期</span></button>
+      <button id="exportBtn2" class="ribbon-button"><span class="icon">⇩</span><span>匯出 Excel</span></button>
+    </div>
+    <div class="ribbon-group">
+      <label>結算基準日<input id="asOfDate" type="date"></label>
+      <label>搜尋<input id="searchInput" type="search" placeholder="姓名 / 投資案"></label>
+      <label>狀態<select id="statusFilter"><option value="">全部</option><option value="active">進行中</option><option value="due">已到期</option><option value="settled">已結算</option></select></label>
+    </div>
+  </section>
+
+  <section class="formula-bar">
+    <div class="name-box">A1</div><div class="fx">fx</div><div id="formulaText" class="formula-input">= 自動依本金、利率與收益資料更新</div>
+  </section>
+
+  <main class="sheet-shell">
+    <section class="summary-strip">
+      <div><span>投資筆數</span><strong id="sumRows">0</strong></div>
+      <div><span>本金合計</span><strong id="sumPrincipal">NT$0</strong></div>
+      <div><span>到期筆數</span><strong id="sumDue">0</strong></div>
+      <div><span>預計收益</span><strong id="sumProfit">NT$0</strong></div>
+    </section>
+
+    <div class="sheet-scroll">
+      <table id="excelTable" class="excel-grid">
+        <thead>
+          <tr class="letters"><th class="corner"></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th><th>I</th><th>J</th></tr>
+          <tr class="headers"><th>#</th><th>投資人</th><th>投資案</th><th>投資金額</th><th>開始日</th><th>期間</th><th>到期日</th><th>利率</th><th>淨收益</th><th>狀態</th><th>備註</th></tr>
+        </thead>
+        <tbody id="sheetBody"></tbody>
+        <tfoot><tr><th>Σ</th><th colspan="2">合計</th><th id="footPrincipal">NT$0</th><th colspan="4"></th><th id="footProfit">NT$0</th><th colspan="2"></th></tr></tfoot>
+      </table>
+    </div>
+
+    <div class="sheet-tabs"><button class="active">投資明細</button><button id="historyTab">結算歷史</button><span id="saveState">讀取資料中…</span></div>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+</body>
+</html>
