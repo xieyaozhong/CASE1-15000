@@ -8,6 +8,8 @@
   const $ = s => document.querySelector(s);
   let currentGroups = [];
   let currentRange = { start:'', end:'' };
+  let returnsCache = null;
+  let saveTimer = 0;
 
   const clean = v => String(v ?? '').trim();
   const num = v => {
@@ -20,7 +22,7 @@
     const n = num(v);
     return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(4)));
   };
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
 
   function readState(){
     try {
@@ -30,16 +32,31 @@
   }
 
   function readReturns(){
+    if (returnsCache) return returnsCache;
     try {
       const parsed = JSON.parse(localStorage.getItem(RETURN_KEY));
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (_) { return {}; }
+      returnsCache = parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      returnsCache = {};
+    }
+    return returnsCache;
+  }
+
+  function persistReturns(){
+    if (!returnsCache) return;
+    clearTimeout(saveTimer);
+    saveTimer = 0;
+    localStorage.setItem(RETURN_KEY, JSON.stringify(returnsCache));
+    const state = $('#saveState');
+    if (state) state.textContent = '已自動儲存';
   }
 
   function saveReturns(data){
-    localStorage.setItem(RETURN_KEY, JSON.stringify(data));
+    returnsCache = data;
     const state = $('#saveState');
-    if (state) state.textContent = '已自動儲存';
+    if (state) state.textContent = '儲存中…';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(persistReturns,250);
   }
 
   function investorColumns(headers){
@@ -133,7 +150,6 @@
 
     const rangeText = $('#settlementRangeText');
     if (rangeText && currentRange.start && currentRange.end) {
-      const cases = new Set(groups.flatMap(g=>g.items.map(x=>x.key.split('|').slice(0,-1).join('|')))).size;
       rangeText.textContent = `${currentRange.start} ～ ${currentRange.end}｜逐案收益預設 6%，可直接修改百分比或金額`;
     }
 
@@ -178,12 +194,15 @@
     if (exportBtn) exportBtn.disabled = false;
   }
 
-  function updateGroupTotal(input){
+  function scheduleGroupTotal(input){
     const groupEl = input.closest('.per-case-profit-group');
-    if (!groupEl) return;
-    const total = [...groupEl.querySelectorAll('.case-amount-input')].reduce((sum,el)=>sum+num(el.value),0);
-    const b = groupEl.querySelector('.group-profit-total b');
-    if (b) b.textContent = `+${money(total)}`;
+    if (!groupEl || groupEl._profitTotalRaf) return;
+    groupEl._profitTotalRaf = requestAnimationFrame(()=>{
+      groupEl._profitTotalRaf = 0;
+      const total = [...groupEl.querySelectorAll('.case-amount-input')].reduce((sum,el)=>sum+num(el.value),0);
+      const b = groupEl.querySelector('.group-profit-total b');
+      if (b) b.textContent = `+${money(total)}`;
+    });
   }
 
   function bindInputs(){
@@ -200,7 +219,7 @@
         amountInput.value = compactNumber(amount);
         store[key] = {basis:'rate',rate,amount};
         saveReturns(store);
-        updateGroupTotal(rateInput);
+        scheduleGroupTotal(rateInput);
       });
 
       amountInput?.addEventListener('input',()=>{
@@ -209,7 +228,7 @@
         rateInput.value = compactNumber(rate);
         store[key] = {basis:'amount',amount,rate};
         saveReturns(store);
-        updateGroupTotal(amountInput);
+        scheduleGroupTotal(amountInput);
       });
     });
   }
@@ -218,6 +237,7 @@
     if (!window.XLSX) return;
     e.preventDefault();
     e.stopImmediatePropagation();
+    persistReturns();
     if (!currentGroups.length) render();
     if (!currentGroups.length) return;
 
@@ -264,6 +284,7 @@
     if (settle) settle.addEventListener('click',()=>queueMicrotask(render));
     const exportBtn = $('#exportSettlementBtn');
     if (exportBtn) exportBtn.addEventListener('click',exportCustom,true);
+    window.addEventListener('pagehide',persistReturns,{passive:true});
   }
 
   init();
