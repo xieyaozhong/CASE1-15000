@@ -1,13 +1,17 @@
 (() => {
   'use strict';
+
   const $ = s => document.querySelector(s);
   const STORAGE_KEY = 'case1-excel-ledger-v1';
-  const SYSTEM_COLUMNS = ['本案收益','費用','可分配收益','狀態','完成日','備註'];
+  const SYSTEM_COLUMNS = ['狀態','完成日','備註'];
+  const OBSOLETE_COLUMNS = new Set(['本案收益','費用','可分配收益']);
   const BASE_COLUMNS = ['日期','起租案名/同仁','案源','案件金額','參與總額'];
-  const numericColumns = new Set(['案件金額','參與總額','本案收益','費用']);
+  const numericColumns = new Set(['案件金額','參與總額']);
   const dateColumns = new Set(['日期','完成日']);
-  let state = { headers:[...BASE_COLUMNS,...SYSTEM_COLUMNS], rows:[] };
+
+  let state = { headers:[...BASE_COLUMNS,...SYSTEM_COLUMNS], rows:[], investorProfits:{} };
   let lastSettlement = [];
+  let lastSettlementKey = '';
 
   const money = value => new Intl.NumberFormat('zh-TW',{maximumFractionDigits:2}).format(Number(value||0));
   const num = value => {
@@ -43,18 +47,20 @@
     const start = state.headers.indexOf('參與總額') + 1;
     const sys = state.headers.findIndex((h,i) => i >= start && SYSTEM_COLUMNS.includes(h));
     const end = sys < 0 ? state.headers.length : sys;
-    return state.headers.slice(start,end).filter(Boolean);
+    return state.headers.slice(start,end).filter(Boolean).filter(h => !OBSOLETE_COLUMNS.has(h));
   }
 
   function ensureColumns(headers){
     const normalized = headers.map(h => clean(h));
-    const out = [];
-    for (const h of BASE_COLUMNS) if (!out.includes(h)) out.push(h);
+    const out = [...BASE_COLUMNS];
     const start = normalized.indexOf('參與總額');
     if (start >= 0) {
       for (let i=start+1;i<normalized.length;i++) {
         const h = normalized[i];
-        if (!h || h === '目前總共撥款' || SYSTEM_COLUMNS.includes(h)) break;
+        if (!h || h === '目前總共撥款' || SYSTEM_COLUMNS.includes(h) || OBSOLETE_COLUMNS.has(h)) {
+          if (SYSTEM_COLUMNS.includes(h) || OBSOLETE_COLUMNS.has(h)) break;
+          continue;
+        }
         if (!out.includes(h)) out.push(h);
       }
     }
@@ -65,7 +71,28 @@
   function investorColumnsFor(headers){
     const start = headers.indexOf('參與總額') + 1;
     const sys = headers.findIndex((h,i)=>i>=start && SYSTEM_COLUMNS.includes(h));
-    return headers.slice(start, sys < 0 ? headers.length : sys).filter(Boolean);
+    return headers.slice(start, sys < 0 ? headers.length : sys).filter(Boolean).filter(h=>!OBSOLETE_COLUMNS.has(h));
+  }
+
+  function normalizeState(saved){
+    const sourceHeaders = Array.isArray(saved?.headers) ? saved.headers.map(clean) : [];
+    const headers = ensureColumns(sourceHeaders);
+    const investors = investorColumnsFor(headers);
+    const rows = Array.isArray(saved?.rows) ? saved.rows.map(old => {
+      const row = {};
+      headers.forEach(h => {
+        let value = old?.[h] ?? '';
+        if (dateColumns.has(h)) value = iso(value);
+        if (numericColumns.has(h) || investors.includes(h)) value = value === '' || value == null ? '' : num(value);
+        row[h] = value;
+      });
+      return row;
+    }) : [];
+    return {
+      headers,
+      rows,
+      investorProfits: saved?.investorProfits && typeof saved.investorProfits === 'object' ? saved.investorProfits : {}
+    };
   }
 
   function mapImportedRows(rawHeaders, rawRows, headers){
@@ -88,27 +115,27 @@
   function save(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     const el = $('#saveState');
-    el.textContent = '已自動儲存';
+    if (el) el.textContent = '已自動儲存';
   }
+
   function markDirty(){
-    $('#saveState').textContent = '儲存中…';
+    const el = $('#saveState');
+    if (el) el.textContent = '儲存中…';
     clearTimeout(markDirty._t);
     markDirty._t = setTimeout(save,220);
   }
+
   function load(){
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (saved?.headers?.length && Array.isArray(saved.rows)) state = saved;
+      if (saved?.headers?.length && Array.isArray(saved.rows)) {
+        state = normalizeState(saved);
+        save();
+      }
     } catch (_) {}
   }
 
-  function blankRow(){
-    return Object.fromEntries(state.headers.map(h => [h, '']));
-  }
-  function computed(row, header){
-    if (header === '可分配收益') return Math.max(0, num(row['本案收益']) - num(row['費用']));
-    return row[header] ?? '';
-  }
+  function blankRow(){ return Object.fromEntries(state.headers.map(h => [h, ''])); }
 
   function renderGrid(focusTarget){
     const table = $('#sheetGrid');
@@ -129,7 +156,6 @@
   }
 
   function cellHTML(row,h,r,c){
-    if (h === '可分配收益') return `<td class="computed-cell" data-computed="1">${money(computed(row,h))}</td>`;
     if (h === '狀態') {
       const v = clean(row[h]);
       return `<td><select class="cell-select grid-cell" data-row="${r}" data-col="${c}" data-header="${esc(h)}"><option value="" ${!v?'selected':''}>—</option><option value="進行中" ${v==='進行中'?'selected':''}>進行中</option><option value="完成" ${v==='完成'?'selected':''}>完成</option><option value="取消" ${v==='取消'?'selected':''}>取消</option></select></td>`;
@@ -145,7 +171,6 @@
       const update = () => {
         const r = Number(el.dataset.row), h = el.dataset.header;
         state.rows[r][h] = el.type === 'number' ? (el.value === '' ? '' : num(el.value)) : el.value;
-        if (h === '本案收益' || h === '費用') refreshComputedRow(r);
         markDirty();
       };
       el.addEventListener('change',update);
@@ -155,15 +180,8 @@
     });
     document.querySelectorAll('.delete-row').forEach(btn => btn.onclick = () => {
       const r = Number(btn.dataset.row);
-      if (confirm(`刪除第 ${r+1} 列？`)) { state.rows.splice(r,1); save(); renderGrid(); }
+      if (confirm(`刪除第 ${r+1} 列？`)) { state.rows.splice(r,1); save(); renderGrid(); resetSettlementView(); }
     });
-  }
-
-  function refreshComputedRow(r){
-    const c = state.headers.indexOf('可分配收益');
-    if (c < 0) return;
-    const td = $('#sheetGrid tbody')?.rows[r]?.cells[c+1];
-    if (td) td.textContent = money(computed(state.rows[r],'可分配收益'));
   }
 
   function focusCell(r,c){
@@ -192,10 +210,10 @@
     while (state.rows.length < startR + matrix.length) state.rows.push(blankRow());
     matrix.forEach((cells,rr)=>cells.forEach((v,cc)=>{
       const c = startC+cc; if (c >= state.headers.length) return;
-      const h = state.headers[c]; if (h === '可分配收益') return;
+      const h = state.headers[c];
       state.rows[startR+rr][h] = dateColumns.has(h) ? iso(v) : (numericColumns.has(h)||investorColumns().includes(h)) ? (clean(v)===''?'':num(v)) : clean(v);
     }));
-    save(); renderGrid({r:startR,c:startC});
+    save(); renderGrid({r:startR,c:startC}); resetSettlementView();
   }
 
   function addRow(){
@@ -210,6 +228,7 @@
     setTimeout(()=>$('#investorName').focus(),20);
   }
   function closeInvestorDialog(){ $('#investorDialog').hidden = true; }
+
   function addInvestor(name){
     const n = clean(name);
     if (!n) return;
@@ -229,14 +248,14 @@
     if (!data.length) throw new Error('Excel 沒有資料。');
     const rawHeaders = data[0].map(h=>clean(h));
     const headers = ensureColumns(rawHeaders);
-    state = {headers,rows:mapImportedRows(rawHeaders,data.slice(1),headers)};
+    state = {headers,rows:mapImportedRows(rawHeaders,data.slice(1),headers),investorProfits:state.investorProfits||{}};
     save(); renderGrid();
     lastSettlement=[]; resetSettlementView();
   }
 
   function exportExcel(){
     if (!window.XLSX) return;
-    const aoa = [state.headers,...state.rows.map(row=>state.headers.map(h=>h==='可分配收益'?computed(row,h):row[h]??''))];
+    const aoa = [state.headers,...state.rows.map(row=>state.headers.map(h=>row[h]??''))];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'收益結算表');
     XLSX.writeFile(wb,`收益結算表_${todayISO()}.xlsx`);
@@ -248,20 +267,28 @@
     return state.rows.filter(row => clean(row['狀態'])==='完成' && iso(row['完成日']) >= start && iso(row['完成日']) <= end);
   }
 
+  function settlementKey(start,end){ return `${start}|${end}`; }
+  function profitKey(periodKey,investor){ return `${periodKey}|${investor}`; }
+  function getInvestorProfit(periodKey,investor){ return num(state.investorProfits?.[profitKey(periodKey,investor)] || 0); }
+
+  function setInvestorProfit(periodKey,investor,value){
+    if (!state.investorProfits) state.investorProfits={};
+    state.investorProfits[profitKey(periodKey,investor)] = num(value);
+    save();
+  }
+
   function buildSettlement(){
     const start=$('#rangeStart').value,end=$('#rangeEnd').value;
     let rows;
     try { rows=completedRows(start,end); } catch(e){ alert(e.message); return; }
     const investors=investorColumns(), groups=new Map();
-    let principal=0, profit=0;
+    let principal=0;
     for (const row of rows) {
       const total=num(row['參與總額']);
-      const distributable=Math.max(0,num(row['本案收益'])-num(row['費用']));
-      principal += total; profit += distributable;
+      principal += total;
       for (const investor of investors) {
         const invested=num(row[investor]);
         if (invested<=0) continue;
-        const investorProfit = total>0 ? distributable*invested/total : 0;
         if (!groups.has(investor)) groups.set(investor,[]);
         groups.get(investor).push({
           investor,
@@ -270,56 +297,84 @@
           completed:iso(row['完成日']),
           caseAmount:num(row['案件金額']),
           total,
-          invested,
-          ratio:total>0?invested/total:0,
-          profit:investorProfit
+          invested
         });
       }
     }
+    lastSettlementKey=settlementKey(start,end);
     lastSettlement=[...groups.entries()].map(([investor,items])=>({investor,items}));
     $('#periodSummary').hidden=false;
     $('#summaryProjects').textContent=rows.length;
     $('#summaryInvestors').textContent=groups.size;
     $('#summaryPrincipal').textContent=money(principal);
-    $('#summaryProfit').textContent=money(profit);
     $('#settlementRangeText').textContent=`${start} ～ ${end}｜共 ${rows.length} 筆完成投資案`;
     renderSettlementGroups(lastSettlement);
+    updateProfitSummary();
     $('#exportSettlementBtn').disabled = !lastSettlement.length;
+  }
+
+  function updateProfitSummary(){
+    const total = lastSettlement.reduce((sum,g)=>sum+getInvestorProfit(lastSettlementKey,g.investor),0);
+    $('#summaryProfit').textContent=money(total);
   }
 
   function renderSettlementGroups(groups){
     const box=$('#investorGroups');
-    if (!groups.length) { box.innerHTML='<div class="empty-result">這個區間內沒有符合「狀態＝完成」且有完成日的投資案。</div>'; return; }
+    if (!groups.length) {
+      box.innerHTML='<div class="empty-result">這個區間內沒有符合「狀態＝完成」且有完成日的投資案。</div>';
+      return;
+    }
     box.innerHTML=groups.map(group=>{
       const invested=group.items.reduce((n,x)=>n+x.invested,0);
-      const profit=group.items.reduce((n,x)=>n+x.profit,0);
+      const profit=getInvestorProfit(lastSettlementKey,group.investor);
       return `<article class="investor-group">
-        <div class="investor-group-head"><strong>${esc(group.investor)}</strong><div class="investor-metric">完成案數<b>${group.items.length}</b></div><div class="investor-metric">參與金額<b>${money(invested)}</b></div><div class="investor-metric">區間收益<b class="profit">+${money(profit)}</b></div></div>
-        <div class="investor-projects"><table class="result-table"><thead><tr><th>完成日</th><th>投資案</th><th>案源</th><th class="num">案件金額</th><th class="num">參與額</th><th class="num">占比</th><th class="num">應分收益</th></tr></thead><tbody>${group.items.map(x=>`<tr><td>${esc(x.completed)}</td><td><strong>${esc(x.project)}</strong></td><td>${esc(x.source||'—')}</td><td class="num">${money(x.caseAmount)}</td><td class="num">${money(x.invested)}</td><td class="num">${(x.ratio*100).toFixed(2)}%</td><td class="num profit">+${money(x.profit)}</td></tr>`).join('')}</tbody></table></div>
+        <div class="investor-group-head investor-summary-head">
+          <div class="investor-name-block"><span>投資人</span><strong>${esc(group.investor)}</strong></div>
+          <div class="investor-metric">完成案數<b>${group.items.length}</b></div>
+          <div class="investor-metric">參與金額<b>${money(invested)}</b></div>
+          <label class="investor-profit-field"><span>本次收益</span><div class="profit-input-wrap"><span>+</span><input class="investor-profit-input" type="number" step="0.01" min="0" value="${profit || ''}" data-investor="${esc(group.investor)}" placeholder="0"></div></label>
+        </div>
+        <div class="investor-projects"><table class="result-table"><thead><tr><th>完成日</th><th>投資案</th><th>案源</th><th class="num">案件金額</th><th class="num">此人參與額</th></tr></thead><tbody>${group.items.map(x=>`<tr><td>${esc(x.completed)}</td><td><strong>${esc(x.project)}</strong></td><td>${esc(x.source||'—')}</td><td class="num">${money(x.caseAmount)}</td><td class="num">${money(x.invested)}</td></tr>`).join('')}</tbody></table></div>
       </article>`;
     }).join('');
+
+    box.querySelectorAll('.investor-profit-input').forEach(input=>{
+      input.addEventListener('input',()=>{
+        setInvestorProfit(lastSettlementKey,input.dataset.investor,input.value);
+        updateProfitSummary();
+      });
+    });
   }
 
   function resetSettlementView(){
     $('#periodSummary').hidden=true;
-    $('#settlementRangeText').textContent='選擇日期區間後按「結算」，完成的投資案會依投資人分組。';
+    $('#settlementRangeText').textContent='選擇日期區間後按「結算」，完成的投資案會依投資人分組，再填寫每位投資人的本次收益。';
     $('#investorGroups').innerHTML='<div class="empty-result">尚未執行區間結算</div>';
     $('#exportSettlementBtn').disabled=true;
+    lastSettlement=[];
+    lastSettlementKey='';
   }
 
   function exportSettlement(){
     if (!lastSettlement.length || !window.XLSX) return;
-    const rows=[['投資人','完成日','投資案','案源','案件金額','參與額','參與占比','應分收益']];
-    lastSettlement.forEach(g=>g.items.forEach(x=>rows.push([g.investor,x.completed,x.project,x.source,x.caseAmount,x.invested,x.ratio,x.profit])));
-    const ws=XLSX.utils.aoa_to_sheet(rows);
-    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'區間結算');
+    const summary=[['投資人','完成案數','參與金額合計','本次收益']];
+    const detail=[['投資人','完成日','投資案','案源','案件金額','此人參與額']];
+    lastSettlement.forEach(g=>{
+      const invested=g.items.reduce((n,x)=>n+x.invested,0);
+      summary.push([g.investor,g.items.length,invested,getInvestorProfit(lastSettlementKey,g.investor)]);
+      g.items.forEach(x=>detail.push([g.investor,x.completed,x.project,x.source,x.caseAmount,x.invested]));
+    });
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summary),'投資人收益');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(detail),'完成案明細');
     XLSX.writeFile(wb,`區間結算_${$('#rangeStart').value}_${$('#rangeEnd').value}.xlsx`);
   }
 
   function clearAll(){
-    if (!confirm('確定清空目前工作表？這會清除這台裝置已儲存的工作表資料。')) return;
-    state={headers:[...BASE_COLUMNS,...SYSTEM_COLUMNS],rows:[]};
-    localStorage.removeItem(STORAGE_KEY); renderGrid(); resetSettlementView(); save();
+    if (!confirm('確定還原原始工作表？目前在這台裝置修改的工作表資料會被重設。')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('case1-original-ledger-seeded-v1');
+    location.reload();
   }
 
   $('#addRowBtn').addEventListener('click',addRow);
@@ -332,6 +387,8 @@
   $('#settleBtn').addEventListener('click',buildSettlement);
   $('#exportSettlementBtn').addEventListener('click',exportSettlement);
   $('#clearBtn').addEventListener('click',clearAll);
+  $('#rangeStart').addEventListener('change',resetSettlementView);
+  $('#rangeEnd').addEventListener('change',resetSettlementView);
 
   load(); defaultPeriod(); renderGrid();
   if (!state.rows.length) { state.rows.push(blankRow()); renderGrid(); save(); }
