@@ -3,7 +3,7 @@
 
   const $ = s => document.querySelector(s);
   const STORAGE_KEY = 'case1-excel-ledger-v1';
-  const SYSTEM_COLUMNS = ['狀態','完成日','備註'];
+  const SYSTEM_COLUMNS = ['狀態','完成日','持續時間','備註'];
   const OBSOLETE_COLUMNS = new Set(['本案收益','費用','可分配收益']);
   const BASE_COLUMNS = ['日期','起租案名/同仁','案源','案件金額','參與總額'];
   const numericColumns = new Set(['案件金額','參與總額']);
@@ -21,9 +21,10 @@
   };
   const clean = value => String(value ?? '').trim();
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const localISO = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const iso = value => {
     if (!value) return '';
-    if (value instanceof Date && !Number.isNaN(value.valueOf())) return value.toISOString().slice(0,10);
+    if (value instanceof Date && !Number.isNaN(value.valueOf())) return localISO(value);
     if (typeof value === 'number' && window.XLSX) {
       const d = XLSX.SSF.parse_date_code(value);
       if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
@@ -31,22 +32,70 @@
     const s = clean(value);
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
     const d = new Date(s);
-    return Number.isNaN(d.valueOf()) ? '' : d.toISOString().slice(0,10);
+    return Number.isNaN(d.valueOf()) ? '' : localISO(d);
   };
-  const todayISO = () => new Date().toISOString().slice(0,10);
+  const todayISO = () => localISO(new Date());
 
-  function applyCompletionStatus(row){
+  function dayNumber(dateString){
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString || '');
+    if (!m) return NaN;
+    return Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3])) / 86400000;
+  }
+
+  function durationDays(row){
+    const start = iso(row['日期']);
+    if (!start) return '';
+    const done = iso(row['完成日']);
+    const status = clean(row['狀態']);
+    if (!done && status === '取消') return '';
+    const end = done || todayISO();
+    const days = Math.floor(dayNumber(end) - dayNumber(start));
+    return Number.isFinite(days) ? Math.max(0,days) : '';
+  }
+
+  function applyRowLinks(row, source='load'){
     if (!row) return;
-    if (iso(row['完成日'])) row['狀態'] = '完成';
-    else if (clean(row['狀態']) === '完成') row['狀態'] = '';
+    const start = iso(row['日期']);
+    if (row['日期']) row['日期'] = start || row['日期'];
+
+    let done = iso(row['完成日']);
+    let status = clean(row['狀態']);
+
+    if (source === 'status') {
+      if (status === '完成' && !done) {
+        done = todayISO();
+        row['完成日'] = done;
+      } else if (status !== '完成' && done) {
+        row['完成日'] = '';
+        done = '';
+      }
+    }
+
+    if (source === 'completion') {
+      row['完成日'] = done;
+      if (done) status = '完成';
+      else if (status === '完成') status = start ? '進行中' : '';
+    }
+
+    if (done) {
+      row['完成日'] = done;
+      status = '完成';
+    } else if (start && !status) {
+      status = '進行中';
+    } else if (!start && status === '進行中') {
+      status = '';
+    }
+
+    row['狀態'] = status;
+    row['持續時間'] = durationDays(row);
   }
 
   function defaultPeriod(){
     const now = new Date();
     const mon = new Date(now); mon.setDate(now.getDate()-((now.getDay()+6)%7));
     const sun = new Date(mon); sun.setDate(mon.getDate()+6);
-    $('#rangeStart').value = mon.toISOString().slice(0,10);
-    $('#rangeEnd').value = sun.toISOString().slice(0,10);
+    $('#rangeStart').value = localISO(mon);
+    $('#rangeEnd').value = localISO(sun);
   }
 
   function investorColumns(){
@@ -90,9 +139,10 @@
         let value = old?.[h] ?? '';
         if (dateColumns.has(h)) value = iso(value);
         if (numericColumns.has(h) || investors.includes(h)) value = value === '' || value == null ? '' : num(value);
+        if (h === '持續時間') value = '';
         row[h] = value;
       });
-      applyCompletionStatus(row);
+      applyRowLinks(row,'load');
       return row;
     }) : [];
     return {
@@ -112,9 +162,10 @@
         let v = idx >= 0 ? row[idx] : '';
         if (dateColumns.has(h)) v = iso(v);
         if (numericColumns.has(h) || investors.includes(h)) v = v == null || v === '' ? '' : num(v);
+        if (h === '持續時間') v = '';
         obj[h] = v ?? '';
       }
-      applyCompletionStatus(obj);
+      applyRowLinks(obj,'load');
       return obj;
     }).filter(row => BASE_COLUMNS.some(h => clean(row[h]) !== '') || investors.some(h => num(row[h]) !== 0));
   }
@@ -153,7 +204,7 @@
     table.innerHTML = `<thead><tr><th class="row-no">#</th>${headerHtml}<th class="delete-cell"></th></tr></thead><tbody></tbody>`;
     const tbody = table.querySelector('tbody');
     state.rows.forEach((row,r) => {
-      applyCompletionStatus(row);
+      applyRowLinks(row,'load');
       const tr = document.createElement('tr');
       tr.innerHTML = `<th class="row-no">${r+1}</th>` + state.headers.map((h,c)=>cellHTML(row,h,r,c)).join('') + `<td class="delete-cell"><button class="delete-row" title="刪除此列" data-row="${r}">×</button></td>`;
       tbody.appendChild(tr);
@@ -166,8 +217,11 @@
   function cellHTML(row,h,r,c){
     if (h === '狀態') {
       const v = clean(row[h]);
-      const locked = iso(row['完成日']) ? ' data-auto-complete="1"' : '';
-      return `<td><select class="cell-select grid-cell" data-row="${r}" data-col="${c}" data-header="${esc(h)}"${locked}><option value="" ${!v?'selected':''}>—</option><option value="進行中" ${v==='進行中'?'selected':''}>進行中</option><option value="完成" ${v==='完成'?'selected':''}>完成</option><option value="取消" ${v==='取消'?'selected':''}>取消</option></select></td>`;
+      return `<td><select class="cell-select grid-cell" data-row="${r}" data-col="${c}" data-header="${esc(h)}"><option value="" ${!v?'selected':''}>—</option><option value="進行中" ${v==='進行中'?'selected':''}>進行中</option><option value="完成" ${v==='完成'?'selected':''}>完成</option><option value="取消" ${v==='取消'?'selected':''}>取消</option></select></td>`;
+    }
+    if (h === '持續時間') {
+      const days = row[h] === '' ? '' : `${row[h]} 天`;
+      return `<td><input class="cell-input grid-cell duration-input" data-row="${r}" data-col="${c}" data-header="${esc(h)}" type="text" readonly value="${esc(days)}" title="依日期、狀態與完成日自動計算"></td>`;
     }
     const investors = investorColumns();
     const type = dateColumns.has(h) ? 'date' : (numericColumns.has(h) || investors.includes(h)) ? 'number' : 'text';
@@ -175,44 +229,49 @@
     return `<td><input class="cell-input grid-cell" data-row="${r}" data-col="${c}" data-header="${esc(h)}" type="${type}"${step} value="${esc(type==='date'?iso(row[h]):row[h]??'')}"></td>`;
   }
 
-  function syncStatusCell(r){
-    const status = $('#sheetGrid').querySelector(`[data-row="${r}"][data-header="狀態"]`);
-    if (status) {
-      status.value = state.rows[r]['狀態'] || '';
-      if (iso(state.rows[r]['完成日'])) status.dataset.autoComplete='1';
-      else delete status.dataset.autoComplete;
-    }
+  function syncLinkedCells(r){
+    const row = state.rows[r];
+    const table = $('#sheetGrid');
+    if (!row || !table) return;
+    const status = table.querySelector(`[data-row="${r}"][data-header="狀態"]`);
+    const completed = table.querySelector(`[data-row="${r}"][data-header="完成日"]`);
+    const duration = table.querySelector(`[data-row="${r}"][data-header="持續時間"]`);
+    if (status) status.value = row['狀態'] || '';
+    if (completed) completed.value = iso(row['完成日']);
+    if (duration) duration.value = row['持續時間'] === '' ? '' : `${row['持續時間']} 天`;
   }
 
   function bindGrid(){
     document.querySelectorAll('.grid-cell').forEach(el => {
       const update = () => {
         const r = Number(el.dataset.row), h = el.dataset.header;
+        if (h === '持續時間') return;
         const row = state.rows[r];
-        let value = el.type === 'number' ? (el.value === '' ? '' : num(el.value)) : el.value;
-
-        if (h === '狀態' && iso(row['完成日'])) {
-          value = '完成';
-          el.value = '完成';
-        }
-
+        const value = el.type === 'number' ? (el.value === '' ? '' : num(el.value)) : el.value;
         row[h] = value;
 
         if (h === '完成日') {
           row['完成日'] = iso(value);
-          applyCompletionStatus(row);
-          syncStatusCell(r);
+          applyRowLinks(row,'completion');
           resetSettlementView();
         } else if (h === '狀態') {
+          applyRowLinks(row,'status');
           resetSettlementView();
+        } else if (h === '日期') {
+          row['日期'] = iso(value);
+          applyRowLinks(row,'start');
+          resetSettlementView();
+        } else {
+          applyRowLinks(row,'load');
         }
 
+        syncLinkedCells(r);
         markDirty();
       };
       el.addEventListener('change',update);
-      el.addEventListener('input',()=>{ if (el.tagName === 'INPUT' && el.type !== 'date') update(); });
+      el.addEventListener('input',()=>{ if (el.tagName === 'INPUT' && el.type !== 'date' && !el.readOnly) update(); });
       el.addEventListener('keydown',handleKeyNav);
-      el.addEventListener('paste',handlePaste);
+      if (!el.readOnly) el.addEventListener('paste',handlePaste);
     });
     document.querySelectorAll('.delete-row').forEach(btn => btn.onclick = () => {
       const r = Number(btn.dataset.row);
@@ -247,14 +306,16 @@
     matrix.forEach((cells,rr)=>cells.forEach((v,cc)=>{
       const c = startC+cc; if (c >= state.headers.length) return;
       const h = state.headers[c];
+      if (h === '持續時間') return;
       state.rows[startR+rr][h] = dateColumns.has(h) ? iso(v) : (numericColumns.has(h)||investorColumns().includes(h)) ? (clean(v)===''?'':num(v)) : clean(v);
     }));
-    for (let r=startR;r<startR+matrix.length;r++) applyCompletionStatus(state.rows[r]);
+    for (let r=startR;r<startR+matrix.length;r++) applyRowLinks(state.rows[r],'load');
     save(); renderGrid({r:startR,c:startC}); resetSettlementView();
   }
 
   function addRow(){
-    state.rows.push(blankRow());
+    const row = blankRow();
+    state.rows.push(row);
     save(); renderGrid({r:state.rows.length-1,c:0});
     $('#gridViewport').scrollTop = $('#gridViewport').scrollHeight;
   }
@@ -292,6 +353,7 @@
 
   function exportExcel(){
     if (!window.XLSX) return;
+    state.rows.forEach(row=>applyRowLinks(row,'load'));
     const aoa = [state.headers,...state.rows.map(row=>state.headers.map(h=>row[h]??''))];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'收益結算表');
@@ -333,6 +395,7 @@
           project:clean(row['起租案名/同仁'])||'未命名投資案',
           source:clean(row['案源']),
           completed:iso(row['完成日']),
+          duration:row['持續時間'],
           caseAmount:num(row['案件金額']),
           total,
           invested
@@ -362,14 +425,12 @@
           <div class="investor-metric">參與金額<b>${money(invested)}</b></div>
           <label class="investor-profit-field"><span>本次收益</span><div class="profit-input-wrap"><span>+</span><input class="investor-profit-input" type="number" step="0.01" min="0" value="${profit || ''}" data-investor="${esc(group.investor)}" placeholder="0"></div></label>
         </div>
-        <div class="investor-projects"><table class="result-table"><thead><tr><th>完成日</th><th>投資案</th><th>案源</th><th class="num">案件金額</th><th class="num">此人參與額</th></tr></thead><tbody>${group.items.map(x=>`<tr><td>${esc(x.completed)}</td><td><strong>${esc(x.project)}</strong></td><td>${esc(x.source||'—')}</td><td class="num">${money(x.caseAmount)}</td><td class="num">${money(x.invested)}</td></tr>`).join('')}</tbody></table></div>
+        <div class="investor-projects"><table class="result-table"><thead><tr><th>完成日</th><th>持續時間</th><th>投資案</th><th>案源</th><th class="num">案件金額</th><th class="num">此人參與額</th></tr></thead><tbody>${group.items.map(x=>`<tr><td>${esc(x.completed)}</td><td>${x.duration === '' ? '—' : `${x.duration} 天`}</td><td><strong>${esc(x.project)}</strong></td><td>${esc(x.source||'—')}</td><td class="num">${money(x.caseAmount)}</td><td class="num">${money(x.invested)}</td></tr>`).join('')}</tbody></table></div>
       </article>`;
     }).join('');
 
     box.querySelectorAll('.investor-profit-input').forEach(input=>{
-      input.addEventListener('input',()=>{
-        setInvestorProfit(lastSettlementKey,input.dataset.investor,input.value);
-      });
+      input.addEventListener('input',()=>setInvestorProfit(lastSettlementKey,input.dataset.investor,input.value));
     });
   }
 
@@ -387,11 +448,11 @@
   function exportSettlement(){
     if (!lastSettlement.length || !window.XLSX) return;
     const summary=[['投資人','完成案數','參與金額合計','本次收益']];
-    const detail=[['投資人','完成日','投資案','案源','案件金額','此人參與額']];
+    const detail=[['投資人','完成日','持續時間(天)','投資案','案源','案件金額','此人參與額']];
     lastSettlement.forEach(g=>{
       const invested=g.items.reduce((n,x)=>n+x.invested,0);
       summary.push([g.investor,g.items.length,invested,getInvestorProfit(lastSettlementKey,g.investor)]);
-      g.items.forEach(x=>detail.push([g.investor,x.completed,x.project,x.source,x.caseAmount,x.invested]));
+      g.items.forEach(x=>detail.push([g.investor,x.completed,x.duration,x.project,x.source,x.caseAmount,x.invested]));
     });
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summary),'投資人收益');
