@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1f3a" />
+  <title>週結算中心｜Excel 工作表</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/excel-ledger.css" />
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="config.js"></script>
+</head>
+<body class="ledger-page">
+<div class="ledger-shell">
+  <header class="sheet-topbar">
+    <a class="sheet-brand" href="admin.html">
+      <span class="sheet-logo">Σ</span>
+      <span><strong>週結算中心</strong><small>Excel 工作表</small></span>
+    </a>
+    <div class="sheet-state"><span id="saveState">已自動儲存</span></div>
+  </header>
+
+  <main>
+    <section class="sheet-toolbar" aria-label="工作表工具列">
+      <div class="period-box">
+        <span class="toolbar-label">結算區間</span>
+        <input id="rangeStart" class="compact-input" type="date" />
+        <span class="range-sep">—</span>
+        <input id="rangeEnd" class="compact-input" type="date" />
+        <button id="settleBtn" class="mini-btn primary" type="button">結算</button>
+      </div>
+      <div class="toolbar-actions">
+        <button id="addRowBtn" class="mini-btn" type="button">＋ 新增列</button>
+        <button id="addInvestorBtn" class="mini-btn" type="button">＋ 投資人</button>
+        <label class="mini-btn file-btn">匯入 Excel<input id="excelInput" type="file" accept=".xlsx,.xls" hidden></label>
+        <button id="exportBtn" class="mini-btn" type="button">匯出 Excel</button>
+        <button id="clearBtn" class="mini-btn danger" type="button">清空</button>
+      </div>
+    </section>
+
+    <section id="periodSummary" class="period-summary" hidden>
+      <div class="summary-card"><span>完成投資案</span><strong id="summaryProjects">0</strong></div>
+      <div class="summary-card"><span>涉及投資人</span><strong id="summaryInvestors">0</strong></div>
+      <div class="summary-card"><span>完成案參與總額</span><strong id="summaryPrincipal">0</strong></div>
+      <div class="summary-card"><span>可分配收益</span><strong id="summaryProfit">0</strong></div>
+    </section>
+
+    <section class="sheet-wrap">
+      <div class="sheet-caption">
+        <div>
+          <strong>主工作表</strong>
+          <span>直接點格子即可編輯；可從 Excel 複製多格後直接貼上。</span>
+        </div>
+        <div id="rowCount" class="row-count">0 筆</div>
+      </div>
+      <div id="gridViewport" class="grid-viewport">
+        <table id="sheetGrid" class="sheet-grid" aria-label="收益結算工作表"></table>
+      </div>
+      <div class="sheet-hint">完成日落在上方指定區間、且狀態為「完成」的案件才會進入結算。收益公式：可分配收益＝本案收益－費用；個人收益＝可分配收益 × 個人參與額 ÷ 參與總額。</div>
+    </section>
+
+    <section id="settlementSection" class="settlement-section">
+      <div class="settlement-head">
+        <div>
+          <h2>區間結算結果</h2>
+          <p id="settlementRangeText">選擇日期區間後按「結算」，完成的投資案會依投資人分組。</p>
+        </div>
+        <button id="exportSettlementBtn" class="mini-btn" type="button" disabled>匯出結算表</button>
+      </div>
+      <div id="investorGroups" class="investor-groups">
+        <div class="empty-result">尚未執行區間結算</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="investorDialog" class="modal-backdrop" hidden>
+  <form id="investorForm" class="mini-modal">
+    <h3>新增投資人欄位</h3>
+    <label>投資人名稱<input id="investorName" class="compact-input" autocomplete="off" required placeholder="例如：INV-010 / 王先生"></label>
+    <div class="modal-actions"><button id="cancelInvestor" class="mini-btn" type="button">取消</button><button class="mini-btn primary" type="submit">新增</button></div>
+  </form>
+</div>
+
+<script src="assets/excel-ledger.js"></script>
+</body>
+</html>
