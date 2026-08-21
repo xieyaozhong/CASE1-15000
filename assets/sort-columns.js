@@ -9,6 +9,8 @@
   const NUMERIC_COLUMNS = new Set(['案件金額','參與總額','持續時間']);
   const SYSTEM_COLUMNS = new Set(['狀態','完成日','持續時間','備註']);
 
+  let decorateRaf = 0;
+
   function readState(){
     try {
       const state = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -64,50 +66,64 @@
     if (!state || !state.headers.includes(header)) return;
     const numericSet = new Set([...NUMERIC_COLUMNS,...investorColumns(state.headers)]);
     const indexed = state.rows.map((row,index)=>({row,index}));
+
     indexed.sort((x,y)=>{
+      const xe = isEmpty(x.row?.[header]);
+      const ye = isEmpty(y.row?.[header]);
+      if (xe !== ye) return xe ? 1 : -1;
+      if (xe && ye) return x.index - y.index;
       const base = compareValues(x.row,y.row,header,numericSet);
       if (base === 0) return x.index - y.index;
       return direction === 'desc' ? -base : base;
     });
 
-    // 空白資料固定放最後，不受升降冪方向影響。
-    const filled = indexed.filter(x=>!isEmpty(x.row?.[header]));
-    const empty = indexed.filter(x=>isEmpty(x.row?.[header]));
-    state.rows = [...filled,...empty].map(x=>x.row);
-
+    state.rows = indexed.map(x=>x.row);
     localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
     localStorage.setItem(SORT_KEY,JSON.stringify({header,direction}));
     location.reload();
   }
 
   function decorateHeaders(){
+    decorateRaf = 0;
     const table = $('#sheetGrid');
     const state = readState();
     if (!table || !state) return;
     const active = readSort();
+
     table.querySelectorAll('thead th[data-col]').forEach(th=>{
       const col = Number(th.dataset.col);
       const header = state.headers[col];
       if (!header) return;
-      th.classList.add('sortable-header');
-      th.dataset.sortHeader = header;
-      th.title = `點擊依「${header}」排序`;
-      th.setAttribute('role','columnheader');
+
+      if (!th.classList.contains('sortable-header')) th.classList.add('sortable-header');
+      if (th.dataset.sortHeader !== header) th.dataset.sortHeader = header;
+      const title = `點擊依「${header}」排序`;
+      if (th.title !== title) th.title = title;
+
       const isActive = active?.header === header;
-      th.setAttribute('aria-sort', isActive ? (active.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+      const ariaSort = isActive ? (active.direction === 'asc' ? 'ascending' : 'descending') : 'none';
+      if (th.getAttribute('aria-sort') !== ariaSort) th.setAttribute('aria-sort',ariaSort);
+
       let icon = th.querySelector('.sort-indicator');
       if (!icon) {
         icon = document.createElement('span');
         icon.className = 'sort-indicator';
         th.appendChild(icon);
       }
-      icon.textContent = isActive ? (active.direction === 'asc' ? '▲' : '▼') : '↕';
+      const nextIcon = isActive ? (active.direction === 'asc' ? '▲' : '▼') : '↕';
+      if (icon.textContent !== nextIcon) icon.textContent = nextIcon;
     });
+  }
+
+  function scheduleDecorate(){
+    if (decorateRaf) return;
+    decorateRaf = requestAnimationFrame(decorateHeaders);
   }
 
   function bind(){
     const table = $('#sheetGrid');
     if (!table) return;
+
     table.addEventListener('click',e=>{
       const th = e.target.closest('thead th[data-col]');
       if (!th || !table.contains(th)) return;
@@ -120,9 +136,11 @@
       sortBy(header,direction);
     });
 
-    const observer = new MutationObserver(()=>decorateHeaders());
-    observer.observe(table,{childList:true,subtree:true});
-    decorateHeaders();
+    // 只監看 table 的直接子節點。主工作表重建時才重新裝飾表頭，
+    // 不再監看 subtree，避免排序圖示自身變更反覆觸發 observer。
+    const observer = new MutationObserver(scheduleDecorate);
+    observer.observe(table,{childList:true});
+    scheduleDecorate();
   }
 
   function injectStyle(){
@@ -130,8 +148,8 @@
     const style = document.createElement('style');
     style.id = 'sortable-columns-style';
     style.textContent = `
-      .sheet-grid thead th.sortable-header{cursor:pointer;user-select:none;transition:background .15s ease,color .15s ease;}
-      .sheet-grid thead th.sortable-header:hover{filter:brightness(.97);color:#0b57d0;}
+      .sheet-grid thead th.sortable-header{cursor:pointer;user-select:none;}
+      .sheet-grid thead th.sortable-header:hover{color:#0b57d0;}
       .sort-indicator{display:inline-block;margin-left:6px;font-size:9px;line-height:1;color:#8a99ad;vertical-align:1px;}
       .sheet-grid thead th[aria-sort="ascending"] .sort-indicator,.sheet-grid thead th[aria-sort="descending"] .sort-indicator{color:#0b57d0;}
     `;
