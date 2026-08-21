@@ -35,6 +35,12 @@
   };
   const todayISO = () => new Date().toISOString().slice(0,10);
 
+  function applyCompletionStatus(row){
+    if (!row) return;
+    if (iso(row['完成日'])) row['狀態'] = '完成';
+    else if (clean(row['狀態']) === '完成') row['狀態'] = '';
+  }
+
   function defaultPeriod(){
     const now = new Date();
     const mon = new Date(now); mon.setDate(now.getDate()-((now.getDay()+6)%7));
@@ -86,6 +92,7 @@
         if (numericColumns.has(h) || investors.includes(h)) value = value === '' || value == null ? '' : num(value);
         row[h] = value;
       });
+      applyCompletionStatus(row);
       return row;
     }) : [];
     return {
@@ -107,7 +114,7 @@
         if (numericColumns.has(h) || investors.includes(h)) v = v == null || v === '' ? '' : num(v);
         obj[h] = v ?? '';
       }
-      if (!obj['狀態']) obj['狀態'] = '';
+      applyCompletionStatus(obj);
       return obj;
     }).filter(row => BASE_COLUMNS.some(h => clean(row[h]) !== '') || investors.some(h => num(row[h]) !== 0));
   }
@@ -146,6 +153,7 @@
     table.innerHTML = `<thead><tr><th class="row-no">#</th>${headerHtml}<th class="delete-cell"></th></tr></thead><tbody></tbody>`;
     const tbody = table.querySelector('tbody');
     state.rows.forEach((row,r) => {
+      applyCompletionStatus(row);
       const tr = document.createElement('tr');
       tr.innerHTML = `<th class="row-no">${r+1}</th>` + state.headers.map((h,c)=>cellHTML(row,h,r,c)).join('') + `<td class="delete-cell"><button class="delete-row" title="刪除此列" data-row="${r}">×</button></td>`;
       tbody.appendChild(tr);
@@ -158,7 +166,8 @@
   function cellHTML(row,h,r,c){
     if (h === '狀態') {
       const v = clean(row[h]);
-      return `<td><select class="cell-select grid-cell" data-row="${r}" data-col="${c}" data-header="${esc(h)}"><option value="" ${!v?'selected':''}>—</option><option value="進行中" ${v==='進行中'?'selected':''}>進行中</option><option value="完成" ${v==='完成'?'selected':''}>完成</option><option value="取消" ${v==='取消'?'selected':''}>取消</option></select></td>`;
+      const locked = iso(row['完成日']) ? ' data-auto-complete="1"' : '';
+      return `<td><select class="cell-select grid-cell" data-row="${r}" data-col="${c}" data-header="${esc(h)}"${locked}><option value="" ${!v?'selected':''}>—</option><option value="進行中" ${v==='進行中'?'selected':''}>進行中</option><option value="完成" ${v==='完成'?'selected':''}>完成</option><option value="取消" ${v==='取消'?'selected':''}>取消</option></select></td>`;
     }
     const investors = investorColumns();
     const type = dateColumns.has(h) ? 'date' : (numericColumns.has(h) || investors.includes(h)) ? 'number' : 'text';
@@ -166,11 +175,38 @@
     return `<td><input class="cell-input grid-cell" data-row="${r}" data-col="${c}" data-header="${esc(h)}" type="${type}"${step} value="${esc(type==='date'?iso(row[h]):row[h]??'')}"></td>`;
   }
 
+  function syncStatusCell(r){
+    const status = $('#sheetGrid').querySelector(`[data-row="${r}"][data-header="狀態"]`);
+    if (status) {
+      status.value = state.rows[r]['狀態'] || '';
+      if (iso(state.rows[r]['完成日'])) status.dataset.autoComplete='1';
+      else delete status.dataset.autoComplete;
+    }
+  }
+
   function bindGrid(){
     document.querySelectorAll('.grid-cell').forEach(el => {
       const update = () => {
         const r = Number(el.dataset.row), h = el.dataset.header;
-        state.rows[r][h] = el.type === 'number' ? (el.value === '' ? '' : num(el.value)) : el.value;
+        const row = state.rows[r];
+        let value = el.type === 'number' ? (el.value === '' ? '' : num(el.value)) : el.value;
+
+        if (h === '狀態' && iso(row['完成日'])) {
+          value = '完成';
+          el.value = '完成';
+        }
+
+        row[h] = value;
+
+        if (h === '完成日') {
+          row['完成日'] = iso(value);
+          applyCompletionStatus(row);
+          syncStatusCell(r);
+          resetSettlementView();
+        } else if (h === '狀態') {
+          resetSettlementView();
+        }
+
         markDirty();
       };
       el.addEventListener('change',update);
@@ -213,6 +249,7 @@
       const h = state.headers[c];
       state.rows[startR+rr][h] = dateColumns.has(h) ? iso(v) : (numericColumns.has(h)||investorColumns().includes(h)) ? (clean(v)===''?'':num(v)) : clean(v);
     }));
+    for (let r=startR;r<startR+matrix.length;r++) applyCompletionStatus(state.rows[r]);
     save(); renderGrid({r:startR,c:startC}); resetSettlementView();
   }
 
@@ -264,7 +301,10 @@
   function completedRows(start,end){
     if (!start || !end) throw new Error('請先選擇結算日期區間。');
     if (end < start) throw new Error('結束日不可早於起始日。');
-    return state.rows.filter(row => clean(row['狀態'])==='完成' && iso(row['完成日']) >= start && iso(row['完成日']) <= end);
+    return state.rows.filter(row => {
+      const completed = iso(row['完成日']);
+      return completed && completed >= start && completed <= end;
+    });
   }
 
   function settlementKey(start,end){ return `${start}|${end}`; }
@@ -282,10 +322,8 @@
     let rows;
     try { rows=completedRows(start,end); } catch(e){ alert(e.message); return; }
     const investors=investorColumns(), groups=new Map();
-    let principal=0;
     for (const row of rows) {
       const total=num(row['參與總額']);
-      principal += total;
       for (const investor of investors) {
         const invested=num(row[investor]);
         if (invested<=0) continue;
@@ -303,25 +341,15 @@
     }
     lastSettlementKey=settlementKey(start,end);
     lastSettlement=[...groups.entries()].map(([investor,items])=>({investor,items}));
-    $('#periodSummary').hidden=false;
-    $('#summaryProjects').textContent=rows.length;
-    $('#summaryInvestors').textContent=groups.size;
-    $('#summaryPrincipal').textContent=money(principal);
     $('#settlementRangeText').textContent=`${start} ～ ${end}｜共 ${rows.length} 筆完成投資案`;
     renderSettlementGroups(lastSettlement);
-    updateProfitSummary();
     $('#exportSettlementBtn').disabled = !lastSettlement.length;
-  }
-
-  function updateProfitSummary(){
-    const total = lastSettlement.reduce((sum,g)=>sum+getInvestorProfit(lastSettlementKey,g.investor),0);
-    $('#summaryProfit').textContent=money(total);
   }
 
   function renderSettlementGroups(groups){
     const box=$('#investorGroups');
     if (!groups.length) {
-      box.innerHTML='<div class="empty-result">這個區間內沒有符合「狀態＝完成」且有完成日的投資案。</div>';
+      box.innerHTML='<div class="empty-result">這個區間內沒有已設定完成日的投資案。</div>';
       return;
     }
     box.innerHTML=groups.map(group=>{
@@ -341,16 +369,17 @@
     box.querySelectorAll('.investor-profit-input').forEach(input=>{
       input.addEventListener('input',()=>{
         setInvestorProfit(lastSettlementKey,input.dataset.investor,input.value);
-        updateProfitSummary();
       });
     });
   }
 
   function resetSettlementView(){
-    $('#periodSummary').hidden=true;
-    $('#settlementRangeText').textContent='選擇日期區間後按「結算」，完成的投資案會依投資人分組，再填寫每位投資人的本次收益。';
-    $('#investorGroups').innerHTML='<div class="empty-result">尚未執行區間結算</div>';
-    $('#exportSettlementBtn').disabled=true;
+    const rangeText = $('#settlementRangeText');
+    if (rangeText) rangeText.textContent='選擇日期區間後按「結算」，有完成日的投資案會依投資人分組，再填寫每位投資人的本次收益。';
+    const groups = $('#investorGroups');
+    if (groups) groups.innerHTML='<div class="empty-result">尚未執行區間結算</div>';
+    const exportBtn = $('#exportSettlementBtn');
+    if (exportBtn) exportBtn.disabled=true;
     lastSettlement=[];
     lastSettlementKey='';
   }
@@ -390,6 +419,9 @@
   $('#rangeStart').addEventListener('change',resetSettlementView);
   $('#rangeEnd').addEventListener('change',resetSettlementView);
 
-  load(); defaultPeriod(); renderGrid();
+  load();
+  defaultPeriod();
+  renderGrid();
+  save();
   if (!state.rows.length) { state.rows.push(blankRow()); renderGrid(); save(); }
 })();
