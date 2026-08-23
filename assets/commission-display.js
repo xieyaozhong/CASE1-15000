@@ -66,6 +66,19 @@
     amount.title = `${label}從投資人原始獲利扣除`;
   }
 
+  function hideNetColumns(table){
+    table.querySelectorAll('th[data-net-rate],th[data-net-amount],td.net-rate-value,td.net-amount-value').forEach(el => {
+      el.style.display = 'none';
+    });
+  }
+
+  function simplifySummary(){
+    document.querySelectorAll('.per-case-profit-group .group-profit-total').forEach(label => {
+      const text = [...label.childNodes].find(node => node.nodeType === Node.TEXT_NODE);
+      if (text && text.nodeValue !== '收益合計') text.nodeValue = '收益合計';
+    });
+  }
+
   function buildStableDisplay(table,refs){
     markLegacyCells(table,refs);
 
@@ -129,6 +142,7 @@
     if (Object.values(refs).some(v => !v)) return;
 
     if (table.dataset.commissionDisplayReady !== '1') buildStableDisplay(table,refs);
+    hideNetColumns(table);
 
     table.querySelectorAll('tbody tr[data-profit-key]').forEach(tr => {
       const refCell = tr.querySelector('td[data-commission-display-cell="referrer"]');
@@ -143,6 +157,7 @@
   function decorate(){
     raf = 0;
     document.querySelectorAll('.per-case-profit-table').forEach(refreshTable);
+    simplifySummary();
   }
 
   function schedule(){
@@ -165,10 +180,9 @@
       .commission-deduction-control input{width:64px!important;color:#991b1b!important;font-weight:800!important;}
       .commission-deduction-control span{color:#b42318!important;}
       .commission-deduction-amount{margin-top:5px;color:#d92d20;font-size:11px;font-weight:900;line-height:1.2;text-align:right;white-space:nowrap;}
-      .net-rate-value,.net-amount-value{color:#0f7b55!important;font-weight:900!important;background:#f4fbf7!important;}
       @media(max-width:700px){
         .investor-projects{margin-left:0!important;margin-right:0!important;}
-        .per-case-profit-table{min-width:1120px!important;}
+        .per-case-profit-table{min-width:900px!important;}
         .commission-display-head,.commission-display-cell{min-width:116px!important;width:116px!important;}
       }
     `;
