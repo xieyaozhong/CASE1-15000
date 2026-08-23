@@ -33,7 +33,8 @@
     const startDay=dayNumber(start);
     if(!Number.isFinite(startDay)) return '';
     const days=parseCycle(cycleDays);
-    const firstDue=startDay+days;
+    // 起始日當天算第 1 天，所以 28 天週期的第一個結算日 = 起始日 + 27 天。
+    const firstDue=startDay+(days-1);
     const todayDay=dayNumber(localISO(new Date()));
     if(!Number.isFinite(todayDay) || todayDay<=firstDue) return isoFromDay(firstDue);
     const steps=Math.ceil((todayDay-firstDue)/days);
@@ -78,12 +79,12 @@
     cycleInput.inputMode='numeric';
     cycleInput.value=String(days);
     cycleInput.placeholder=String(DEFAULT_DAYS);
-    cycleInput.title='單位：天；預設 28 天';
+    cycleInput.title='單位：天；預設 28 天；起始日當天算第 1 天';
 
     const due=nextSettlement(startInput?.value,days);
     recentInput.value=due;
     recentInput.readOnly=true;
-    recentInput.title='依起始日與週期自動計算下一個最近結算日';
+    recentInput.title='依起始日與週期自動計算；起始日當天算第 1 天';
     recentInput.classList.add('auto-recent-date');
 
     bridge?.setBusinessByIndex?.(rowIndex,CYCLE,String(days));
@@ -138,8 +139,9 @@
     cycle.min='1';
     cycle.step='1';
     cycle.inputMode='numeric';
+    cycle.title='起始日當天算第 1 天';
     recent.readOnly=true;
-    recent.title='依起始日與週期自動計算';
+    recent.title='依起始日與週期自動計算；起始日當天算第 1 天';
 
     const refresh=()=>{
       const days=parseCycle(cycle.value);
