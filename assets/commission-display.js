@@ -9,14 +9,10 @@
     return Number.isFinite(n) ? n : 0;
   };
   const money = value => new Intl.NumberFormat('zh-TW',{maximumFractionDigits:2}).format(Math.abs(looseNum(value)));
-  const compact = value => {
-    const n = looseNum(value);
-    return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
-  };
 
-  function markRowCells(table, refs){
+  function markLegacyCells(table, refs){
+    if (table.dataset.commissionLegacyMarked === '1') return;
     const indexes = {
-      broker: refs.broker.cellIndex,
       companyPct: refs.companyPct.cellIndex,
       companyAmt: refs.companyAmt.cellIndex,
       refPct: refs.refPct.cellIndex,
@@ -24,40 +20,105 @@
     };
 
     table.querySelectorAll('tbody tr[data-profit-key]').forEach(tr => {
-      if (tr.querySelector('[data-commission-role="broker"]')) return;
       const cells = [...tr.cells];
-      const pairs = [
-        ['broker',indexes.broker],
-        ['companyPct',indexes.companyPct],
-        ['companyAmt',indexes.companyAmt],
-        ['refPct',indexes.refPct],
-        ['refAmt',indexes.refAmt]
-      ];
-      pairs.forEach(([role,index]) => {
+      Object.entries(indexes).forEach(([role,index]) => {
         const td = cells[index];
-        if (td) td.dataset.commissionRole = role;
+        if (td) td.dataset.commissionLegacy = role;
       });
     });
+    table.dataset.commissionLegacyMarked = '1';
   }
 
-  function deductionCard(td, hiddenAmountTd, label){
-    if (!td || !hiddenAmountTd) return;
-    td.classList.add('commission-deduction-cell');
-    const control = td.querySelector('.inline-profit-control');
-    if (control) control.classList.add('commission-deduction-control');
+  function makeDisplayHeader(label,role){
+    const th = document.createElement('th');
+    th.className = 'num commission-display-head';
+    th.dataset.commissionDisplay = role;
+    th.textContent = label;
+    return th;
+  }
 
-    let amount = td.querySelector('.commission-deduction-amount');
+  function makeDisplayCell(role){
+    const td = document.createElement('td');
+    td.className = 'num commission-display-cell';
+    td.dataset.commissionDisplayCell = role;
+    return td;
+  }
+
+  function moveControl(sourceTd,targetTd,role){
+    if (!sourceTd || !targetTd) return;
+    const control = sourceTd.querySelector('.inline-profit-control');
+    if (control && !targetTd.contains(control)) targetTd.appendChild(control);
+    if (control) control.classList.add('commission-deduction-control');
+    const input = targetTd.querySelector('input');
+    if (input) input.setAttribute('aria-label', role === 'referrer' ? '仲介人抽成比例' : '仲介公司抽成比例');
+  }
+
+  function updateDeduction(targetTd,amountTd,label){
+    if (!targetTd || !amountTd) return;
+    let amount = targetTd.querySelector('.commission-deduction-amount');
     if (!amount) {
       amount = document.createElement('div');
       amount.className = 'commission-deduction-amount';
-      td.appendChild(amount);
+      targetTd.appendChild(amount);
     }
-    const value = looseNum(hiddenAmountTd.textContent);
-    amount.textContent = `−${money(value)}`;
+    const text = `扣款 −${money(amountTd.textContent)}`;
+    if (amount.textContent !== text) amount.textContent = text;
     amount.title = `${label}從投資人原始獲利扣除`;
   }
 
-  function decorateTable(table){
+  function buildStableDisplay(table,refs){
+    markLegacyCells(table,refs);
+
+    refs.companyPct.style.display = 'none';
+    refs.companyAmt.style.display = 'none';
+    refs.refPct.style.display = 'none';
+    refs.refAmt.style.display = 'none';
+    refs.broker.textContent = '仲介費';
+    refs.broker.classList.add('commission-display-head','commission-broker-head');
+
+    let refHead = table.querySelector('th[data-commission-display="referrer"]');
+    let companyHead = table.querySelector('th[data-commission-display="company"]');
+    if (!refHead) {
+      refHead = makeDisplayHeader('仲介人','referrer');
+      refs.broker.insertAdjacentElement('afterend',refHead);
+    }
+    if (!companyHead) {
+      companyHead = makeDisplayHeader('仲介公司','company');
+      refHead.insertAdjacentElement('afterend',companyHead);
+    }
+
+    table.querySelectorAll('tbody tr[data-profit-key]').forEach(tr => {
+      const broker = tr.querySelector('td[data-business-settlement-broker]');
+      const legacyCompanyPct = tr.querySelector('td[data-commission-legacy="companyPct"]');
+      const legacyCompanyAmt = tr.querySelector('td[data-commission-legacy="companyAmt"]');
+      const legacyRefPct = tr.querySelector('td[data-commission-legacy="refPct"]');
+      const legacyRefAmt = tr.querySelector('td[data-commission-legacy="refAmt"]');
+      if (!broker || !legacyCompanyPct || !legacyCompanyAmt || !legacyRefPct || !legacyRefAmt) return;
+
+      [legacyCompanyPct,legacyCompanyAmt,legacyRefPct,legacyRefAmt].forEach(td => { td.style.display = 'none'; });
+      broker.classList.add('commission-total-cell');
+
+      let refCell = tr.querySelector('td[data-commission-display-cell="referrer"]');
+      let companyCell = tr.querySelector('td[data-commission-display-cell="company"]');
+      if (!refCell) {
+        refCell = makeDisplayCell('referrer');
+        broker.insertAdjacentElement('afterend',refCell);
+      }
+      if (!companyCell) {
+        companyCell = makeDisplayCell('company');
+        refCell.insertAdjacentElement('afterend',companyCell);
+      }
+
+      moveControl(legacyRefPct,refCell,'referrer');
+      moveControl(legacyCompanyPct,companyCell,'company');
+      updateDeduction(refCell,legacyRefAmt,'仲介人');
+      updateDeduction(companyCell,legacyCompanyAmt,'仲介公司');
+    });
+
+    table.dataset.commissionDisplayReady = '1';
+  }
+
+  function refreshTable(table){
     const refs = {
       broker: table.querySelector('th[data-business-settlement-broker]'),
       companyPct: table.querySelector('th[data-company-pct]'),
@@ -67,55 +128,21 @@
     };
     if (Object.values(refs).some(v => !v)) return;
 
-    markRowCells(table, refs);
-
-    refs.broker.textContent = '仲介費';
-    refs.refPct.textContent = '仲介人';
-    refs.companyPct.textContent = '仲介公司';
-    refs.refAmt.style.display = 'none';
-    refs.companyAmt.style.display = 'none';
-
-    if (refs.broker.nextElementSibling !== refs.refPct) refs.broker.insertAdjacentElement('afterend',refs.refPct);
-    if (refs.refPct.nextElementSibling !== refs.companyPct) refs.refPct.insertAdjacentElement('afterend',refs.companyPct);
+    if (table.dataset.commissionDisplayReady !== '1') buildStableDisplay(table,refs);
 
     table.querySelectorAll('tbody tr[data-profit-key]').forEach(tr => {
-      const broker = tr.querySelector('[data-commission-role="broker"]');
-      const refPct = tr.querySelector('[data-commission-role="refPct"]');
-      const refAmt = tr.querySelector('[data-commission-role="refAmt"]');
-      const companyPct = tr.querySelector('[data-commission-role="companyPct"]');
-      const companyAmt = tr.querySelector('[data-commission-role="companyAmt"]');
-      if (!broker || !refPct || !refAmt || !companyPct || !companyAmt) return;
-
-      refAmt.style.display = 'none';
-      companyAmt.style.display = 'none';
-      if (broker.nextElementSibling !== refPct) broker.insertAdjacentElement('afterend',refPct);
-      if (refPct.nextElementSibling !== companyPct) refPct.insertAdjacentElement('afterend',companyPct);
-
-      broker.classList.add('commission-total-cell');
-      if (!broker.querySelector('input')) {
-        const pct = looseNum(broker.textContent);
-        broker.textContent = `${compact(pct)}%`;
-      }
-
-      deductionCard(refPct,refAmt,'仲介人');
-      deductionCard(companyPct,companyAmt,'仲介公司');
+      const refCell = tr.querySelector('td[data-commission-display-cell="referrer"]');
+      const companyCell = tr.querySelector('td[data-commission-display-cell="company"]');
+      const refAmt = tr.querySelector('td[data-commission-legacy="refAmt"]');
+      const companyAmt = tr.querySelector('td[data-commission-legacy="companyAmt"]');
+      updateDeduction(refCell,refAmt,'仲介人');
+      updateDeduction(companyCell,companyAmt,'仲介公司');
     });
-
-    const rate = table.querySelector('.case-rate-input')?.closest('td');
-    const amount = table.querySelector('.case-amount-input')?.closest('td');
-    if (rate) {
-      const th = table.querySelectorAll('thead th')[rate.cellIndex];
-      if (th) th.textContent = '原始收益率';
-    }
-    if (amount) {
-      const th = table.querySelectorAll('thead th')[amount.cellIndex];
-      if (th) th.textContent = '原始收益';
-    }
   }
 
   function decorate(){
     raf = 0;
-    document.querySelectorAll('.per-case-profit-table').forEach(decorateTable);
+    document.querySelectorAll('.per-case-profit-table').forEach(refreshTable);
   }
 
   function schedule(){
@@ -128,17 +155,22 @@
     const style = document.createElement('style');
     style.id = 'commission-display-style';
     style.textContent = `
-      .commission-total-cell{font-weight:800;color:#b42318;background:#fff7f7!important;white-space:nowrap;}
-      .commission-deduction-cell{min-width:128px!important;background:#fffafa!important;vertical-align:middle!important;}
-      .commission-deduction-control{border-color:#fecaca!important;background:#fff!important;}
-      .commission-deduction-control input{color:#991b1b!important;font-weight:800!important;}
+      .investor-projects{overflow-x:auto!important;-webkit-overflow-scrolling:touch!important;overscroll-behavior-x:contain;}
+      .per-case-profit-table{width:max-content!important;min-width:100%!important;table-layout:auto!important;}
+      .commission-display-head{min-width:124px!important;white-space:nowrap!important;background:#fff5f5!important;color:#b42318!important;text-align:center!important;}
+      .commission-broker-head{min-width:88px!important;}
+      .commission-total-cell{font-weight:900!important;color:#b42318!important;background:#fff7f7!important;white-space:nowrap!important;text-align:center!important;}
+      .commission-display-cell{min-width:124px!important;width:124px!important;background:#fffafa!important;vertical-align:middle!important;padding:8px 10px!important;}
+      .commission-deduction-control{min-width:102px!important;border-color:#fecaca!important;background:#fff!important;}
+      .commission-deduction-control input{width:64px!important;color:#991b1b!important;font-weight:800!important;}
       .commission-deduction-control span{color:#b42318!important;}
-      .commission-deduction-amount{margin-top:4px;color:#d92d20;font-size:11px;font-weight:900;line-height:1.2;text-align:right;white-space:nowrap;}
-      .commission-deduction-amount::before{content:'扣款 ';font-size:9px;font-weight:700;color:#ef4444;}
-      .per-case-profit-table th[data-business-settlement-broker],
-      .per-case-profit-table th[data-referrer-pct],
-      .per-case-profit-table th[data-company-pct]{background:#fff5f5!important;color:#b42318!important;}
-      .net-profit-amount,.net-profit-rate{color:#0f7b55!important;font-weight:900!important;}
+      .commission-deduction-amount{margin-top:5px;color:#d92d20;font-size:11px;font-weight:900;line-height:1.2;text-align:right;white-space:nowrap;}
+      .net-rate-value,.net-amount-value{color:#0f7b55!important;font-weight:900!important;background:#f4fbf7!important;}
+      @media(max-width:700px){
+        .investor-projects{margin-left:0!important;margin-right:0!important;}
+        .per-case-profit-table{min-width:1120px!important;}
+        .commission-display-head,.commission-display-cell{min-width:116px!important;width:116px!important;}
+      }
     `;
     document.head.appendChild(style);
   }
@@ -148,7 +180,7 @@
     const box = $('#investorGroups');
     if (box) {
       const observer = new MutationObserver(schedule);
-      observer.observe(box,{childList:true,subtree:true});
+      observer.observe(box,{childList:true,subtree:true,characterData:true});
       box.addEventListener('input',schedule,{passive:true});
       box.addEventListener('change',schedule,{passive:true});
     }
