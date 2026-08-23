@@ -7,10 +7,10 @@
   let active=null;
 
   function readWidths(){
-    try {
+    try{
       const v=JSON.parse(localStorage.getItem(WIDTH_KEY));
       return v && typeof v==='object' ? v : {};
-    } catch(_){ return {}; }
+    }catch(_){ return {}; }
   }
 
   function saveWidths(widths){
@@ -28,10 +28,6 @@
     return key;
   }
 
-  function cssEscape(value){
-    return String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"');
-  }
-
   function applyWidths(){
     const table=$('#sheetGrid');
     if(!table) return;
@@ -43,7 +39,7 @@
       document.head.appendChild(style);
     }
     const rules=[];
-    table.querySelectorAll('thead th[data-col], thead th[data-payer-column]').forEach(th=>{
+    table.querySelectorAll('thead th[data-col], thead th[data-payer-column], thead th[data-business-column]').forEach(th=>{
       const key=headerKey(th);
       const width=Number(widths[key]);
       if(!Number.isFinite(width) || width<56) return;
@@ -57,7 +53,7 @@
     refreshRaf=0;
     const table=$('#sheetGrid');
     if(!table) return;
-    table.querySelectorAll('thead th[data-col], thead th[data-payer-column]').forEach(th=>{
+    table.querySelectorAll('thead th[data-col], thead th[data-payer-column], thead th[data-business-column]').forEach(th=>{
       headerKey(th);
       if(th.querySelector('.col-resize-handle')) return;
       th.classList.add('resizable-header');
