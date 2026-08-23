@@ -59,7 +59,7 @@
         <div class="period-panel-copy">
           <span class="toolbar-kicker">SETTLEMENT WINDOW</span>
           <div class="period-title-row"><strong>結算區間</strong><span class="period-rule-pill">逐案收益預設 6%</span></div>
-          <p>週期預設 28 天，系統會從每筆案件的起始日自動推算下一個最近結算日；指定日期區間後，再依投資人整理投入金額與逐案收益。</p>
+          <p>週期預設 28 天，起始日當天算第 1 天；系統會自動推算今天起最近的下一個結算日，再依投資人整理投入金額與逐案收益。</p>
         </div>
         <div class="period-controls">
           <label class="date-field" for="rangeStart"><span>起始日</span><input id="rangeStart" class="compact-input" type="date" /></label>
@@ -67,7 +67,7 @@
           <label class="date-field" for="rangeEnd"><span>結束日</span><input id="rangeEnd" class="compact-input" type="date" /></label>
           <button id="settleBtn" class="mini-btn primary settle-action" type="button">開始結算</button>
         </div>
-        <div class="period-notes"><span class="note-chip">週期預設 28 天</span><span class="note-chip">最近結算日自動計算</span><span class="note-chip">逐案收益預設 6%</span></div>
+        <div class="period-notes"><span class="note-chip">週期預設 28 天</span><span class="note-chip">起始日算第 1 天</span><span class="note-chip">最近結算日自動計算</span></div>
       </div>
       <div class="toolbar-actions">
         <button id="addRowBtn" class="mini-btn" type="button">＋ 新增列</button>
@@ -81,7 +81,7 @@
     <section class="sheet-wrap">
       <div class="sheet-caption"><div><strong>主工作表</strong><span>直接點格子即可編輯；欄位可排序、調整寬度。</span></div><div id="rowCount" class="row-count">0 筆</div></div>
       <div id="gridViewport" class="grid-viewport"><table id="sheetGrid" class="sheet-grid" aria-label="收益結算工作表"></table></div>
-      <div class="sheet-hint">週期預設為 28 天；系統會依起始日與週期自動算出今天起最近的下一個結算日。修改起始日或週期後，最近結算日會同步更新。</div>
+      <div class="sheet-hint">週期預設為 28 天，起始日當天算第 1 天；例如 8/1 起租，第 28 天就是 8/28。修改起始日或週期後，最近結算日會同步更新。</div>
     </section>
 
     <section id="settlementSection" class="settlement-section">
@@ -96,15 +96,15 @@
 </div>
 
 <script src="assets/original-ledger-seed.js"></script>
-<script src="assets/schema-bridge.js?v=20260823-1430"></script>
-<script src="assets/excel-ledger.js?v=20260823-1430"></script>
-<script src="assets/per-case-profit.js?v=20260823-1430"></script>
-<script src="assets/add-project.js?v=20260823-1430"></script>
-<script src="assets/sort-columns.js?v=20260823-1430"></script>
-<script src="assets/delete-investor.js?v=20260823-1430"></script>
-<script src="assets/business-columns.js?v=20260823-1430"></script>
-<script src="assets/payer-column.js?v=20260823-1430"></script>
-<script src="assets/column-resize.js?v=20260823-1430"></script>
-<script src="assets/auto-cycle.js?v=20260823-1430"></script>
+<script src="assets/schema-bridge.js?v=20260823-1434"></script>
+<script src="assets/excel-ledger.js?v=20260823-1434"></script>
+<script src="assets/per-case-profit.js?v=20260823-1434"></script>
+<script src="assets/add-project.js?v=20260823-1434"></script>
+<script src="assets/sort-columns.js?v=20260823-1434"></script>
+<script src="assets/delete-investor.js?v=20260823-1434"></script>
+<script src="assets/business-columns.js?v=20260823-1434"></script>
+<script src="assets/payer-column.js?v=20260823-1434"></script>
+<script src="assets/column-resize.js?v=20260823-1434"></script>
+<script src="assets/auto-cycle.js?v=20260823-1434"></script>
 </body>
 </html>
