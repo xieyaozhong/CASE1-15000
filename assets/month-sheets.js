@@ -107,7 +107,7 @@
     if(!tabs) return;
     const counts=monthCounts();
     const months=allMonths();
-    const total=[...counts.values()].reduce((sum,n)=>sum+n,0);
+    const total=readState()?.rows?.length || 0;
     tabs.innerHTML='';
 
     const make=(value,label,count)=>{
