@@ -59,7 +59,7 @@
         <div class="period-panel-copy">
           <span class="toolbar-kicker">SETTLEMENT WINDOW</span>
           <div class="period-title-row"><strong>結算區間</strong><span class="period-rule-pill">逐案收益預設 6%</span></div>
-          <p>週期預設 28 天，起始日當天算第 1 天；仲介費預設 0%，只從投資人的原始獲利抽成，不會從投入本金扣除。</p>
+          <p>週期預設 28 天，起始日當天算第 1 天；系統會自動推算今天起最近的下一個結算日，再依投資人整理投入金額與逐案收益。</p>
         </div>
         <div class="period-controls">
           <label class="date-field" for="rangeStart"><span>起始日</span><input id="rangeStart" class="compact-input" type="date" /></label>
@@ -67,7 +67,7 @@
           <label class="date-field" for="rangeEnd"><span>結束日</span><input id="rangeEnd" class="compact-input" type="date" /></label>
           <button id="settleBtn" class="mini-btn primary settle-action" type="button">開始結算</button>
         </div>
-        <div class="period-notes"><span class="note-chip">週期預設 28 天</span><span class="note-chip">仲介費預設 0%</span><span class="note-chip">公司／介紹人可分開抽成</span></div>
+        <div class="period-notes"><span class="note-chip">週期預設 28 天</span><span class="note-chip">起始日算第 1 天</span><span class="note-chip">仲介費自獲利扣除</span></div>
       </div>
       <div class="toolbar-actions">
         <button id="addRowBtn" class="mini-btn" type="button">＋ 新增列</button>
@@ -81,11 +81,11 @@
     <section class="sheet-wrap">
       <div class="sheet-caption"><div><strong>主工作表</strong><span>直接點格子即可編輯；欄位可排序、調整寬度。</span></div><div id="rowCount" class="row-count">0 筆</div></div>
       <div id="gridViewport" class="grid-viewport"><table id="sheetGrid" class="sheet-grid" aria-label="收益結算工作表"></table></div>
-      <div class="sheet-hint">仲介費欄位使用百分比，預設 0%。例如投資人原始收益率 10%、仲介費 10%，投資人淨收益率會自動變成 9%。逐案明細可再拆分介紹公司與介紹人的抽成比例。</div>
+      <div class="sheet-hint">週期預設為 28 天，起始日當天算第 1 天；仲介費是從投資人的原始獲利中扣除，明細會以紅色扣款顯示仲介人與仲介公司的抽成。</div>
     </section>
 
     <section id="settlementSection" class="settlement-section">
-      <div class="settlement-head"><div><h2>投資人區間結算</h2><p id="settlementRangeText">選擇日期區間後按「結算」，明細可設定介紹公司與介紹人抽成，並自動計算投資人淨收益。</p></div><button id="exportSettlementBtn" class="mini-btn" type="button" disabled>匯出結算表</button></div>
+      <div class="settlement-head"><div><h2>投資人區間結算</h2><p id="settlementRangeText">選擇日期區間後按「結算」，系統會依最近結算日整理每位投資人的案件、仲介扣款與淨收益。</p></div><button id="exportSettlementBtn" class="mini-btn" type="button" disabled>匯出結算表</button></div>
       <div id="investorGroups" class="investor-groups"><div class="empty-result">尚未執行區間結算</div></div>
     </section>
   </main>
@@ -96,16 +96,17 @@
 </div>
 
 <script src="assets/original-ledger-seed.js"></script>
-<script src="assets/schema-bridge.js?v=20260823-1440"></script>
-<script src="assets/excel-ledger.js?v=20260823-1440"></script>
-<script src="assets/per-case-profit.js?v=20260823-1440"></script>
-<script src="assets/add-project.js?v=20260823-1440"></script>
-<script src="assets/sort-columns.js?v=20260823-1440"></script>
-<script src="assets/delete-investor.js?v=20260823-1440"></script>
-<script src="assets/business-columns.js?v=20260823-1440"></script>
-<script src="assets/payer-column.js?v=20260823-1440"></script>
-<script src="assets/column-resize.js?v=20260823-1440"></script>
-<script src="assets/auto-cycle.js?v=20260823-1440"></script>
-<script src="assets/commission-split.js?v=20260823-1440"></script>
+<script src="assets/schema-bridge.js?v=20260823-1518"></script>
+<script src="assets/excel-ledger.js?v=20260823-1518"></script>
+<script src="assets/per-case-profit.js?v=20260823-1518"></script>
+<script src="assets/add-project.js?v=20260823-1518"></script>
+<script src="assets/sort-columns.js?v=20260823-1518"></script>
+<script src="assets/delete-investor.js?v=20260823-1518"></script>
+<script src="assets/business-columns.js?v=20260823-1518"></script>
+<script src="assets/payer-column.js?v=20260823-1518"></script>
+<script src="assets/column-resize.js?v=20260823-1518"></script>
+<script src="assets/auto-cycle.js?v=20260823-1518"></script>
+<script src="assets/commission-split.js?v=20260823-1518"></script>
+<script src="assets/commission-display.js?v=20260823-1518"></script>
 </body>
 </html>
