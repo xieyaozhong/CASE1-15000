@@ -3,6 +3,9 @@
 
   const ACTIVE_KEY='case1-ledger-active-month-v1';
   const MANUAL_KEY='case1-ledger-manual-months-v1';
+  const RECENT='最近結算日';
+  const LEGACY_RECENT='完成日';
+  const DEFAULT_CYCLE=28;
   const bridge=window.LedgerSchemaBridge;
   const $=s=>document.querySelector(s);
   let active='all';
@@ -10,6 +13,7 @@
 
   const clean=v=>String(v ?? '').trim();
   const monthFromDate=v=>/^\d{4}-\d{2}/.test(clean(v)) ? clean(v).slice(0,7) : '';
+  const localISO=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const nowMonth=()=>{
     const d=new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -18,6 +22,28 @@
     const match=/^(\d{4})-(\d{2})$/.exec(m||'');
     return match ? `${match[1]}年${Number(match[2])}月` : m;
   };
+
+  function settlementDate(row){
+    return clean(row?.[RECENT]) || clean(row?.[LEGACY_RECENT]);
+  }
+
+  function startForSettlementMonth(month){
+    const match=/^(\d{4})-(\d{2})$/.exec(month||'');
+    if(!match) return '';
+    const current=nowMonth();
+    if(month<current) return '';
+
+    const today=new Date();
+    let target;
+    if(month===current){
+      target=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+    }else{
+      target=new Date(Number(match[1]),Number(match[2])-1,1);
+    }
+    const start=new Date(target);
+    start.setDate(start.getDate()-(DEFAULT_CYCLE-1));
+    return localISO(start);
+  }
 
   function readState(){
     const canonical=bridge?.readCanonical?.();
@@ -43,7 +69,7 @@
     const counts=new Map();
     const state=readState();
     state?.rows?.forEach(row=>{
-      const m=monthFromDate(row?.['日期']);
+      const m=monthFromDate(settlementDate(row));
       if(m) counts.set(m,(counts.get(m)||0)+1);
     });
     return counts;
@@ -64,7 +90,7 @@
     const bar=document.createElement('div');
     bar.id='monthSheetBar';
     bar.className='month-sheet-bar';
-    bar.innerHTML='<div id="monthSheetTabs" class="month-sheet-tabs" role="tablist" aria-label="月份工作表"></div><button id="addMonthSheet" class="month-sheet-add" type="button">＋ 月份</button>';
+    bar.innerHTML='<div id="monthSheetTabs" class="month-sheet-tabs" role="tablist" aria-label="月份工作表（依最近結算日）"></div><button id="addMonthSheet" class="month-sheet-add" type="button">＋ 月份</button>';
     viewport.insertAdjacentElement('afterend',bar);
 
     const dialog=document.createElement('div');
@@ -73,8 +99,8 @@
     dialog.hidden=true;
     dialog.innerHTML=`<form id="monthSheetForm" class="mini-modal month-sheet-modal">
       <h3>新增月份工作表</h3>
-      <p>可以先建立空月份，之後在這個分頁新增案件。</p>
-      <label>月份<input id="monthSheetInput" class="compact-input" type="month" required></label>
+      <p>月份工作表依「最近結算日」分類，可以先建立空月份，之後再加入該月要結算的案件。</p>
+      <label>結算月份<input id="monthSheetInput" class="compact-input" type="month" required></label>
       <div class="modal-actions"><button id="cancelMonthSheet" class="mini-btn" type="button">取消</button><button class="mini-btn primary" type="submit">建立月份</button></div>
     </form>`;
     document.body.appendChild(dialog);
@@ -117,6 +143,7 @@
       btn.dataset.month=value;
       btn.setAttribute('role','tab');
       btn.setAttribute('aria-selected',String(active===value));
+      btn.title=value==='all'?'顯示全部案件':`顯示最近結算日在 ${label} 的案件`;
       if(active===value) btn.classList.add('active');
       btn.innerHTML=`<span>${label}</span><b>${count}</b>`;
       btn.addEventListener('click',()=>{
@@ -133,22 +160,26 @@
     requestAnimationFrame(()=>tabs.querySelector('.month-sheet-tab.active')?.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}));
   }
 
+  function rowSettlementInput(tr){
+    return tr.querySelector(`[data-header="${RECENT}"]`) || tr.querySelector(`[data-header="${LEGACY_RECENT}"]`);
+  }
+
   function applyFilter(){
     const table=$('#sheetGrid');
     if(!table) return;
     let shown=0,total=0;
     table.querySelectorAll('tbody tr').forEach(tr=>{
       total++;
-      const dateInput=tr.querySelector('[data-header="日期"]');
-      const match=active==='all' || monthFromDate(dateInput?.value)===active;
+      const recentInput=rowSettlementInput(tr);
+      const match=active==='all' || monthFromDate(recentInput?.value)===active;
       tr.style.display=match?'':'none';
       if(match) shown++;
     });
 
     const count=$('#rowCount');
-    if(count) count.textContent=active==='all' ? `${total} 筆` : `${shown} 筆｜${monthLabel(active)}`;
+    if(count) count.textContent=active==='all' ? `${total} 筆` : `${shown} 筆｜${monthLabel(active)}結算`;
     const caption=document.querySelector('.sheet-caption strong');
-    if(caption) caption.textContent=active==='all'?'總表':monthLabel(active);
+    if(caption) caption.textContent=active==='all'?'總表':`${monthLabel(active)}結算表`;
     const bar=$('#monthSheetBar');
     if(bar) bar.dataset.activeMonth=active;
   }
@@ -166,12 +197,14 @@
 
   function primeNewRowForMonth(){
     if(active==='all') return;
+    const startDate=startForSettlementMonth(active);
+    if(!startDate) return;
     requestAnimationFrame(()=>{
       const rows=[...document.querySelectorAll('#sheetGrid tbody tr')];
       const tr=rows.at(-1);
       const input=tr?.querySelector('[data-header="日期"]');
       if(!input || input.value) return;
-      input.value=`${active}-01`;
+      input.value=startDate;
       input.dispatchEvent(new Event('change',{bubbles:true}));
       scheduleRefresh();
     });
@@ -179,16 +212,12 @@
 
   function primeProjectDialog(){
     if(active==='all') return;
+    const startDate=startForSettlementMonth(active);
+    if(!startDate) return;
     requestAnimationFrame(()=>{
       const input=$('#projectStartDate');
       if(!input) return;
-      const current=nowMonth();
-      if(active===current){
-        const d=new Date();
-        input.value=`${active}-${String(d.getDate()).padStart(2,'0')}`;
-      }else{
-        input.value=`${active}-01`;
-      }
+      input.value=startDate;
       input.dispatchEvent(new Event('change',{bubbles:true}));
     });
   }
@@ -224,7 +253,8 @@
       const observer=new MutationObserver(scheduleRefresh);
       observer.observe(table,{childList:true});
       table.addEventListener('change',e=>{
-        if(e.target?.dataset?.header==='日期') scheduleRefresh();
+        const header=e.target?.dataset?.header;
+        if(header===RECENT || header===LEGACY_RECENT || header==='日期' || header==='週期') scheduleRefresh();
       });
     }
     $('#addRowBtn')?.addEventListener('click',primeNewRowForMonth);
