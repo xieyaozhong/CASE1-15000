@@ -3,6 +3,7 @@
 
   const STORAGE_KEY='case1-excel-ledger-v1';
   const SORT_KEY='case1-excel-ledger-sort-v1';
+  const RETURN_KEY='case1-per-case-returns-v1';
   const LEGACY_PROJECT='起租案名/同仁';
   const HIDDEN_FIELDS=['狀態','完成日','持續時間'];
   const CYCLE='週期';
@@ -16,7 +17,9 @@
     const n=Number(String(v ?? '').replace(/,/g,'').trim());
     return Number.isFinite(n)?n:0;
   };
+  const money=v=>new Intl.NumberFormat('zh-TW',{maximumFractionDigits:2}).format(num(v));
   let refreshRaf=0;
+  let settlementRaf=0;
 
   function virtualState(){
     try{
@@ -26,6 +29,14 @@
   }
 
   function canonicalState(){ return bridge?.readCanonical?.(); }
+
+  function investorColumns(){
+    const state=virtualState();
+    if(!state?.headers) return [];
+    const start=state.headers.indexOf('參與總額')+1;
+    const end=state.headers.findIndex((h,i)=>i>=start && HIDDEN_FIELDS.includes(h));
+    return state.headers.slice(start,end<0?state.headers.length:end).filter(Boolean);
+  }
 
   function currentSort(field){
     try{
@@ -116,24 +127,22 @@
     const noteTh=noteIndex>=0 ? table.querySelector(`thead th[data-col="${noteIndex}"]`) : null;
     if(!noteTh) return;
 
-    const headers=[
+    [
       makeHeader(CYCLE,CYCLE,'text'),
       makeHeader(RECENT,RECENT,'date'),
       makeHeader(BROKER,BROKER,'number')
-    ];
-    headers.forEach(th=>noteTh.insertAdjacentElement('beforebegin',th));
+    ].forEach(th=>noteTh.insertAdjacentElement('beforebegin',th));
 
     table.querySelectorAll('tbody tr').forEach((tr,rowIndex)=>{
       const noteInput=tr.querySelector('[data-header="備註"]');
       const noteTd=noteInput?.closest('td');
       if(!noteTd) return;
       const row=canonical.rows[rowIndex] || {};
-      const cells=[
+      [
         makeCell(rowIndex,CYCLE,'text',businessValue(row,CYCLE)),
         makeCell(rowIndex,RECENT,'date',businessValue(row,RECENT)),
         makeCell(rowIndex,BROKER,'number',businessValue(row,BROKER))
-      ];
-      cells.forEach(td=>noteTd.insertAdjacentElement('beforebegin',td));
+      ].forEach(td=>noteTd.insertAdjacentElement('beforebegin',td));
     });
   }
 
@@ -208,11 +217,8 @@
     e.preventDefault();
     e.stopImmediatePropagation();
     const canonical=canonicalState();
-    const virtual=virtualState();
-    if(!canonical?.rows || !virtual?.headers) return;
-    const start=virtual.headers.indexOf('參與總額')+1;
-    const end=virtual.headers.findIndex((h,i)=>i>=start && HIDDEN_FIELDS.includes(h));
-    const investors=virtual.headers.slice(start,end<0?virtual.headers.length:end).filter(Boolean);
+    const investors=investorColumns();
+    if(!canonical?.rows) return;
     const headers=['日期','起租案名','案源','撥款人','案件金額','參與總額',...investors,CYCLE,RECENT,BROKER,'備註'];
     const rows=canonical.rows.map(row=>[
       row['日期']??'',row[LEGACY_PROJECT]??'',row['案源']??'',row['撥款人']??'',row['案件金額']??'',row['參與總額']??'',
@@ -223,6 +229,137 @@
     const d=new Date();
     const stamp=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     XLSX.writeFile(wb,`收益結算表_${stamp}.xlsx`);
+  }
+
+  function baseCaseKey(row){
+    return [clean(row?.['日期']),clean(row?.[LEGACY_PROJECT]),clean(row?.['案源']),clean(row?.['案件金額']),clean(row?.['完成日']),clean(row?.['備註'])].join('|');
+  }
+
+  function settlementItems(){
+    const state=canonicalState();
+    const investors=investorColumns();
+    const start=$('#rangeStart')?.value || '';
+    const end=$('#rangeEnd')?.value || '';
+    const map=new Map();
+    const groups=new Map();
+    const duplicates=new Map();
+    if(!state?.rows || !start || !end) return {map,groups,start,end};
+
+    state.rows.forEach(row=>{
+      const recent=clean(row?.['完成日']);
+      if(!recent || recent<start || recent>end) return;
+      const base=baseCaseKey(row);
+      const occurrence=(duplicates.get(base)||0)+1;
+      duplicates.set(base,occurrence);
+      const caseKey=`${base}#${occurrence}`;
+      investors.forEach(investor=>{
+        const invested=num(row?.[investor]);
+        if(invested<=0) return;
+        const key=`${caseKey}|${investor}`;
+        const item={
+          key,investor,recent,cycle:row?.[CYCLE]??'',broker:row?.[BROKER]??'',project:clean(row?.[LEGACY_PROJECT])||'未命名投資案',
+          source:clean(row?.['案源']),payer:clean(row?.['撥款人']),caseAmount:num(row?.['案件金額']),invested
+        };
+        map.set(key,item);
+        if(!groups.has(investor)) groups.set(investor,[]);
+        groups.get(investor).push(item);
+      });
+    });
+    return {map,groups,start,end};
+  }
+
+  function decorateSettlement(){
+    settlementRaf=0;
+    const box=$('#investorGroups');
+    if(!box) return;
+    const {map}=settlementItems();
+    box.querySelectorAll('.per-case-profit-table').forEach(table=>{
+      const ths=table.querySelectorAll('thead th');
+      if(ths[0]) ths[0].textContent=RECENT;
+      if(ths[1]) ths[1].textContent=CYCLE;
+      if(ths[4] && !table.querySelector('th[data-business-settlement-broker]')){
+        const th=document.createElement('th');
+        th.className='num';
+        th.dataset.businessSettlementBroker='1';
+        th.textContent=BROKER;
+        ths[4].insertAdjacentElement('afterend',th);
+      }
+      table.querySelectorAll('tbody tr[data-profit-key]').forEach(tr=>{
+        const item=map.get(tr.dataset.profitKey);
+        if(!item) return;
+        const cells=tr.querySelectorAll('td');
+        if(cells[1]) cells[1].textContent=clean(item.cycle)||'—';
+        if(!tr.querySelector('td[data-business-settlement-broker]') && cells[4]){
+          const td=document.createElement('td');
+          td.className='num';
+          td.dataset.businessSettlementBroker='1';
+          td.textContent=item.broker===''||item.broker==null?'—':money(item.broker);
+          cells[4].insertAdjacentElement('afterend',td);
+        }
+      });
+    });
+    box.querySelectorAll('.investor-metric').forEach(el=>{
+      if(el.firstChild?.nodeType===Node.TEXT_NODE && el.firstChild.nodeValue?.trim()==='完成案數') el.firstChild.nodeValue='結算案數';
+    });
+  }
+
+  function scheduleSettlement(){
+    if(settlementRaf) return;
+    settlementRaf=requestAnimationFrame(decorateSettlement);
+  }
+
+  function readReturnStore(){
+    try{
+      const store=JSON.parse(localStorage.getItem(RETURN_KEY));
+      return store && typeof store==='object' ? store : {};
+    }catch(_){ return {}; }
+  }
+
+  function liveReturnSettings(){
+    const map=new Map();
+    document.querySelectorAll('.per-case-profit-table tbody tr[data-profit-key]').forEach(tr=>{
+      map.set(tr.dataset.profitKey,{rate:num(tr.querySelector('.case-rate-input')?.value),amount:num(tr.querySelector('.case-amount-input')?.value)});
+    });
+    return map;
+  }
+
+  function returnSetting(item,store,live){
+    if(live.has(item.key)) return live.get(item.key);
+    const raw=store[item.key];
+    if(!raw || typeof raw!=='object') return {rate:6,amount:item.invested*.06};
+    if(raw.basis==='amount'){
+      const amount=Math.max(0,num(raw.amount));
+      return {amount,rate:item.invested>0?amount/item.invested*100:0};
+    }
+    const rate=Math.max(0,num(raw.rate ?? 6));
+    return {rate,amount:item.invested*rate/100};
+  }
+
+  function exportSettlementBusiness(e){
+    if(!window.XLSX) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    const {groups,start,end}=settlementItems();
+    if(!groups.size) return;
+    const store=readReturnStore();
+    const live=liveReturnSettings();
+    const summary=[['投資人','結算案數','投入金額合計','收益合計']];
+    const detail=[['投資人',RECENT,CYCLE,'起租案名','案源','撥款人','案件金額','投入金額',BROKER,'收益率(%)','收益金額']];
+    groups.forEach((items,investor)=>{
+      let invested=0,profit=0;
+      items.forEach(item=>{
+        const setting=returnSetting(item,store,live);
+        invested+=item.invested;
+        profit+=setting.amount;
+        detail.push([investor,item.recent,item.cycle,item.project,item.source,item.payer,item.caseAmount,item.invested,item.broker,setting.rate,setting.amount]);
+      });
+      summary.push([investor,items.length,invested,profit]);
+    });
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summary),'投資人收益');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(detail),'逐案收益明細');
+    XLSX.writeFile(wb,`區間結算_${start}_${end}.xlsx`);
   }
 
   function decorateTable(){
@@ -260,9 +397,18 @@
       const observer=new MutationObserver(scheduleDecorate);
       observer.observe(table,{childList:true});
     }
+    const settlement=$('#investorGroups');
+    if(settlement){
+      const observer=new MutationObserver(scheduleSettlement);
+      observer.observe(settlement,{childList:true});
+    }
     const exportBtn=$('#exportBtn');
     if(exportBtn) exportBtn.addEventListener('click',exportBusiness,true);
+    document.addEventListener('click',e=>{
+      if(e.target.closest?.('#exportSettlementBtn')) exportSettlementBusiness(e);
+    },true);
     scheduleDecorate();
+    scheduleSettlement();
   }
 
   init();
