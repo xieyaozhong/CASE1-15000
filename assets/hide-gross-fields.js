@@ -13,12 +13,16 @@
   function markGrossDataCells(table){
     table.querySelectorAll('tbody tr[data-profit-key]').forEach(tr=>{
       const rateTd = tr.querySelector('.case-rate-input')?.closest('td');
-      const amountTd = tr.querySelector('.case-amount-input')?.closest('td');
-      if(rateTd){
+      if(rateTd && !rateTd.dataset.settlementDisplayCell){
         rateTd.dataset.legacyGrossRateCell = '1';
         hardHide(rateTd);
       }
-      if(amountTd){
+
+      const legacyAmountTd = tr.querySelector('td[data-legacy-gross-amount-cell]');
+      if(legacyAmountTd) hardHide(legacyAmountTd);
+
+      const amountTd = tr.querySelector('.case-amount-input')?.closest('td');
+      if(amountTd && !amountTd.dataset.settlementDisplayCell){
         amountTd.dataset.legacyGrossAmountCell = '1';
         hardHide(amountTd);
       }
@@ -77,6 +81,10 @@
         max-width:0!important;
         padding:0!important;
         border:0!important;
+      }
+      td[data-settlement-display-cell="earnings"]{
+        display:table-cell!important;
+        visibility:visible!important;
       }
     `;
     document.head.appendChild(style);
