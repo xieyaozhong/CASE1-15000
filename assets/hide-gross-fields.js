@@ -33,10 +33,10 @@
     table.querySelectorAll('thead th').forEach(th=>{
       if(th.dataset.settlementDisplay) return;
       const label = String(th.textContent || '').trim();
-      if(label === '收益率'){
+      if(label === '收益率' || label === '原始收益率'){
         th.dataset.legacyGrossRateHead = '1';
         hardHide(th);
-      }else if(label === '收益金額'){
+      }else if(label === '收益金額' || label === '原始收益'){
         th.dataset.legacyGrossAmountHead = '1';
         hardHide(th);
       }
