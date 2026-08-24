@@ -10,16 +10,38 @@
     el.classList.add('gross-field-hidden');
   }
 
-  function hideTable(table){
+  function markGrossDataCells(table){
     table.querySelectorAll('tbody tr[data-profit-key]').forEach(tr=>{
       const rateTd = tr.querySelector('.case-rate-input')?.closest('td');
       const amountTd = tr.querySelector('.case-amount-input')?.closest('td');
-      [rateTd,amountTd].forEach(hardHide);
-
-      const ths = [...table.querySelectorAll('thead th')];
-      if(rateTd && ths[rateTd.cellIndex]) hardHide(ths[rateTd.cellIndex]);
-      if(amountTd && ths[amountTd.cellIndex]) hardHide(ths[amountTd.cellIndex]);
+      if(rateTd){
+        rateTd.dataset.legacyGrossRateCell = '1';
+        hardHide(rateTd);
+      }
+      if(amountTd){
+        amountTd.dataset.legacyGrossAmountCell = '1';
+        hardHide(amountTd);
+      }
     });
+  }
+
+  function markGrossHeaders(table){
+    table.querySelectorAll('thead th').forEach(th=>{
+      if(th.dataset.settlementDisplay) return;
+      const label = String(th.textContent || '').trim();
+      if(label === '收益率'){
+        th.dataset.legacyGrossRateHead = '1';
+        hardHide(th);
+      }else if(label === '收益金額'){
+        th.dataset.legacyGrossAmountHead = '1';
+        hardHide(th);
+      }
+    });
+  }
+
+  function hideTable(table){
+    markGrossDataCells(table);
+    markGrossHeaders(table);
 
     table.querySelectorAll(
       'th[data-legacy-gross-rate-head],th[data-legacy-gross-amount-head],td[data-legacy-gross-rate-cell],td[data-legacy-gross-amount-cell],th[data-settlement-display="rate"],td[data-settlement-display-cell="rate"]'
