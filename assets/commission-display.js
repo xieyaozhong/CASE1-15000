@@ -88,12 +88,44 @@
   }
 
   function moveControl(sourceTd,targetTd,ariaLabel,extraClass=''){
-    if(!targetTd) return;
-    const control=sourceTd?.querySelector('.inline-profit-control') || targetTd.querySelector('.inline-profit-control');
+    if(!sourceTd || !targetTd) return;
+    const control=sourceTd.querySelector('.inline-profit-control') || targetTd.querySelector('.inline-profit-control');
     if(control && !targetTd.contains(control)) targetTd.appendChild(control);
     if(control && extraClass) control.classList.add(extraClass);
     const input=targetTd.querySelector('input');
     if(input) input.setAttribute('aria-label',ariaLabel);
+  }
+
+  function ensureEarningsInput(tr,targetTd){
+    if(!tr || !targetTd) return;
+    const source=tr.querySelector('.case-amount-input');
+    if(!source) return;
+
+    let input=targetTd.querySelector('.settlement-earnings-input');
+    if(!input){
+      const wrap=document.createElement('div');
+      wrap.className='inline-profit-control amount-control settlement-earning-control';
+      const prefix=document.createElement('span');
+      prefix.textContent='+';
+      input=document.createElement('input');
+      input.className='settlement-earnings-input';
+      input.type='number';
+      input.min='0';
+      input.step='0.01';
+      input.inputMode='decimal';
+      input.setAttribute('aria-label','收益金額');
+      wrap.append(prefix,input);
+      targetTd.appendChild(wrap);
+
+      const syncToSource=()=>{
+        source.value=input.value;
+        source.dispatchEvent(new Event('input',{bubbles:true}));
+      };
+      input.addEventListener('input',syncToSource);
+      input.addEventListener('change',syncToSource);
+    }
+
+    if(document.activeElement!==input && input.value!==source.value) input.value=source.value;
   }
 
   function updateDeduction(targetTd,amountTd,label){
@@ -135,7 +167,7 @@
     const rateInput=tr.querySelector('.case-rate-input');
     const amountInput=tr.querySelector('.case-amount-input');
     const rateTd=tr.querySelector('td[data-legacy-gross-rate-cell]') || rateInput?.closest('td');
-    const amountTd=tr.querySelector('td[data-legacy-gross-amount-cell]') || (amountInput?.closest('td')?.dataset?.settlementDisplayCell ? null : amountInput?.closest('td'));
+    const amountTd=tr.querySelector('td[data-legacy-gross-amount-cell]') || amountInput?.closest('td');
     const brokerTd=tr.querySelector('td[data-business-settlement-broker]');
     const companyPctTd=tr.querySelector('.company-split-input')?.closest('td');
     const companyAmtTd=tr.querySelector('.company-fee-amount');
@@ -143,16 +175,15 @@
     const refAmtTd=tr.querySelector('.referrer-fee-amount');
     const netRateTd=tr.querySelector('.net-rate-value');
     const netAmountTd=tr.querySelector('.net-amount-value');
-    if(!rateTd || !brokerTd || !companyPctTd || !companyAmtTd || !refPctTd || !refAmtTd || !netRateTd || !netAmountTd) return;
+    if(!rateTd || !amountTd || !brokerTd || !companyPctTd || !companyAmtTd || !refPctTd || !refAmtTd || !netRateTd || !netAmountTd) return;
 
     rateTd.dataset.legacyGrossRateCell='1';
-    if(amountTd) amountTd.dataset.legacyGrossAmountCell='1';
-    [rateTd,amountTd,brokerTd,companyPctTd,companyAmtTd,refPctTd,refAmtTd,netRateTd,netAmountTd].filter(Boolean).forEach(td=>{
+    amountTd.dataset.legacyGrossAmountCell='1';
+    [rateTd,amountTd,brokerTd,companyPctTd,companyAmtTd,refPctTd,refAmtTd,netRateTd,netAmountTd].forEach(td=>{
       if(!td.matches('[data-settlement-display-cell]')) td.style.display='none';
     });
 
-    moveControl(amountTd,cells.earnings,'收益金額','settlement-earning-control');
-    cells.earnings.querySelector('.amount-control')?.classList.add('settlement-earning-control');
+    ensureEarningsInput(tr,cells.earnings);
     cells.broker.textContent=String(brokerTd.textContent ?? '').trim() || '0%';
     moveControl(companyPctTd,cells.company,'仲介公司抽成比例','commission-deduction-control');
     moveControl(refPctTd,cells.referrer,'仲介人抽成比例','commission-deduction-control');
@@ -203,8 +234,8 @@
       .settlement-display-cell{min-width:108px!important;width:108px!important;vertical-align:middle!important;padding:8px 10px!important;white-space:nowrap!important;}
       .settlement-earning-head{background:#f7faff!important;color:#315b92!important;}
       .settlement-earning-cell{background:#fbfdff!important;}
-      .settlement-earning-control{min-width:96px!important;border-color:#bfd0e5!important;background:#fff!important;}
-      .settlement-earning-control input{width:66px!important;color:#1f4f82!important;font-weight:800!important;}
+      .settlement-earning-control{min-width:96px!important;border-color:#bfd0e5!important;background:#fff!important;pointer-events:auto!important;}
+      .settlement-earning-control input{width:66px!important;color:#1f4f82!important;font-weight:800!important;pointer-events:auto!important;touch-action:manipulation;}
       .settlement-fee-head{background:#fff5f5!important;color:#b42318!important;}
       .settlement-fee-cell{background:#fffafa!important;color:#b42318!important;}
       .settlement-fee-cell[data-settlement-display-cell="broker"]{font-weight:900!important;text-align:center!important;}
@@ -229,8 +260,14 @@
     if(box){
       const observer=new MutationObserver(schedule);
       observer.observe(box,{childList:true,subtree:true,characterData:true});
-      box.addEventListener('input',schedule,{passive:true});
-      box.addEventListener('change',schedule,{passive:true});
+      box.addEventListener('input',e=>{
+        if(e.target?.classList?.contains('settlement-earnings-input')) return;
+        schedule();
+      },{passive:true});
+      box.addEventListener('change',e=>{
+        if(e.target?.classList?.contains('settlement-earnings-input')) return;
+        schedule();
+      },{passive:true});
     }
     $('#settleBtn')?.addEventListener('click',()=>{
       requestAnimationFrame(schedule);
