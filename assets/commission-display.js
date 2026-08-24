@@ -69,6 +69,11 @@
     table.querySelectorAll('th[data-settlement-display="rate"],td[data-settlement-display-cell="rate"]').forEach(el=>el.remove());
   }
 
+  function placeAfter(anchor,el){
+    if(!anchor || !el) return;
+    if(anchor.nextElementSibling!==el) anchor.insertAdjacentElement('afterend',el);
+  }
+
   function ensureDisplayHeaders(table,refs){
     const order=[
       ['earnings','收益','earning'],
@@ -81,8 +86,8 @@
     let anchor=refs.investedTh;
     order.forEach(([role,label,kind])=>{
       let th=table.querySelector(`th[data-settlement-display="${role}"]`);
-      if(!th){ th=makeHeader(label,role,kind); }
-      anchor.insertAdjacentElement('afterend',th);
+      if(!th) th=makeHeader(label,role,kind);
+      placeAfter(anchor,th);
       anchor=th;
     });
   }
@@ -113,6 +118,7 @@
       input.min='0';
       input.step='0.01';
       input.inputMode='decimal';
+      input.autocomplete='off';
       input.setAttribute('aria-label','收益金額');
       wrap.append(prefix,input);
       targetTd.appendChild(wrap);
@@ -120,6 +126,7 @@
       const syncToSource=()=>{
         source.value=input.value;
         source.dispatchEvent(new Event('input',{bubbles:true}));
+        requestAnimationFrame(schedule);
       };
       input.addEventListener('input',syncToSource);
       input.addEventListener('change',syncToSource);
@@ -144,7 +151,8 @@
   function updateValue(targetTd,sourceTd,suffix=''){
     if(!targetTd || !sourceTd) return;
     const value=String(sourceTd.textContent ?? '').trim();
-    targetTd.textContent=value || suffix;
+    const next=value || suffix;
+    if(targetTd.textContent!==next) targetTd.textContent=next;
   }
 
   function ensureDisplayCells(tr){
@@ -156,7 +164,7 @@
     order.forEach(([role,kind])=>{
       let td=tr.querySelector(`td[data-settlement-display-cell="${role}"]`);
       if(!td) td=makeCell(role,kind);
-      anchor.insertAdjacentElement('afterend',td);
+      placeAfter(anchor,td);
       anchor=td;
       out[role]=td;
     });
@@ -184,7 +192,8 @@
     });
 
     ensureEarningsInput(tr,cells.earnings);
-    cells.broker.textContent=String(brokerTd.textContent ?? '').trim() || '0%';
+    const brokerText=String(brokerTd.textContent ?? '').trim() || '0%';
+    if(cells.broker.textContent!==brokerText) cells.broker.textContent=brokerText;
     moveControl(companyPctTd,cells.company,'仲介公司抽成比例','commission-deduction-control');
     moveControl(refPctTd,cells.referrer,'仲介人抽成比例','commission-deduction-control');
     updateDeduction(cells.company,companyAmtTd,'仲介公司');
@@ -234,8 +243,8 @@
       .settlement-display-cell{min-width:108px!important;width:108px!important;vertical-align:middle!important;padding:8px 10px!important;white-space:nowrap!important;}
       .settlement-earning-head{background:#f7faff!important;color:#315b92!important;}
       .settlement-earning-cell{background:#fbfdff!important;}
-      .settlement-earning-control{min-width:96px!important;border-color:#bfd0e5!important;background:#fff!important;pointer-events:auto!important;}
-      .settlement-earning-control input{width:66px!important;color:#1f4f82!important;font-weight:800!important;pointer-events:auto!important;touch-action:manipulation;}
+      .settlement-earning-control{min-width:96px!important;border-color:#bfd0e5!important;background:#fff!important;pointer-events:auto!important;position:relative!important;z-index:2!important;}
+      .settlement-earning-control input{width:66px!important;color:#1f4f82!important;font-weight:800!important;pointer-events:auto!important;touch-action:manipulation!important;-webkit-user-select:text!important;user-select:text!important;position:relative!important;z-index:3!important;}
       .settlement-fee-head{background:#fff5f5!important;color:#b42318!important;}
       .settlement-fee-cell{background:#fffafa!important;color:#b42318!important;}
       .settlement-fee-cell[data-settlement-display-cell="broker"]{font-weight:900!important;text-align:center!important;}
@@ -259,7 +268,7 @@
     const box=$('#investorGroups');
     if(box){
       const observer=new MutationObserver(schedule);
-      observer.observe(box,{childList:true,subtree:true,characterData:true});
+      observer.observe(box,{childList:true,subtree:false});
       box.addEventListener('input',e=>{
         if(e.target?.classList?.contains('settlement-earnings-input')) return;
         schedule();
@@ -272,6 +281,7 @@
     $('#settleBtn')?.addEventListener('click',()=>{
       requestAnimationFrame(schedule);
       setTimeout(schedule,60);
+      setTimeout(schedule,160);
     });
     schedule();
   }
