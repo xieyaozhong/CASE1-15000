@@ -12,7 +12,7 @@
 
   function makeHeader(label,role,kind='normal'){
     const th=document.createElement('th');
-    th.className=`num settlement-display-head ${kind==='fee'?'settlement-fee-head':kind==='net'?'settlement-net-head':''}`.trim();
+    th.className=`num settlement-display-head ${kind==='fee'?'settlement-fee-head':kind==='net'?'settlement-net-head':kind==='earning'?'settlement-earning-head':''}`.trim();
     th.dataset.settlementDisplay=role;
     th.textContent=label;
     return th;
@@ -20,7 +20,7 @@
 
   function makeCell(role,kind='normal'){
     const td=document.createElement('td');
-    td.className=`num settlement-display-cell ${kind==='fee'?'settlement-fee-cell':kind==='net'?'settlement-net-cell':''}`.trim();
+    td.className=`num settlement-display-cell ${kind==='fee'?'settlement-fee-cell':kind==='net'?'settlement-net-cell':kind==='earning'?'settlement-earning-cell':''}`.trim();
     td.dataset.settlementDisplayCell=role;
     return td;
   }
@@ -46,8 +46,8 @@
       sample,
       invested,
       investedTh:ths[invested.cellIndex],
-      rateTh:table.querySelector('th[data-legacy-gross-rate-head]') || ths[legacyRateTd.cellIndex],
-      amountTh:table.querySelector('th[data-legacy-gross-amount-head]') || ths[legacyAmountTd.cellIndex],
+      rateTh:table.querySelector('th[data-legacy-gross-rate-head]') || [...table.querySelectorAll('thead th')].find(th=>String(th.textContent||'').trim()==='收益率'),
+      amountTh:table.querySelector('th[data-legacy-gross-amount-head]') || [...table.querySelectorAll('thead th')].find(th=>String(th.textContent||'').trim()==='收益金額'),
       brokerTh:table.querySelector('th[data-business-settlement-broker]'),
       companyPctTh:table.querySelector('th[data-company-pct]'),
       companyAmtTh:table.querySelector('th[data-company-amt]'),
@@ -65,12 +65,13 @@
       .filter(Boolean).forEach(th=>{ th.style.display='none'; });
   }
 
-  function removeGrossDisplay(table){
+  function removeOldGrossDisplay(table){
     table.querySelectorAll('th[data-settlement-display="rate"],td[data-settlement-display-cell="rate"]').forEach(el=>el.remove());
   }
 
   function ensureDisplayHeaders(table,refs){
     const order=[
+      ['earnings','收益','earning'],
       ['broker','仲介費','fee'],
       ['company','仲介公司','fee'],
       ['referrer','仲介人','fee'],
@@ -87,8 +88,8 @@
   }
 
   function moveControl(sourceTd,targetTd,ariaLabel,extraClass=''){
-    if(!sourceTd || !targetTd) return;
-    const control=sourceTd.querySelector('.inline-profit-control');
+    if(!targetTd) return;
+    const control=sourceTd?.querySelector('.inline-profit-control') || targetTd.querySelector('.inline-profit-control');
     if(control && !targetTd.contains(control)) targetTd.appendChild(control);
     if(control && extraClass) control.classList.add(extraClass);
     const input=targetTd.querySelector('input');
@@ -105,7 +106,7 @@
     }
     const text=`扣款 −${money(amountTd.textContent)}`;
     if(amount.textContent!==text) amount.textContent=text;
-    amount.title=`${label}從投資人原始獲利扣除`;
+    amount.title=`${label}從投資人收益扣除`;
   }
 
   function updateValue(targetTd,sourceTd,suffix=''){
@@ -117,7 +118,7 @@
   function ensureDisplayCells(tr){
     const invested=tr.querySelector('.invested-value');
     if(!invested) return null;
-    const order=[['broker','fee'],['company','fee'],['referrer','fee'],['netRate','net'],['netAmount','net']];
+    const order=[['earnings','earning'],['broker','fee'],['company','fee'],['referrer','fee'],['netRate','net'],['netAmount','net']];
     let anchor=invested;
     const out={};
     order.forEach(([role,kind])=>{
@@ -134,7 +135,7 @@
     const rateInput=tr.querySelector('.case-rate-input');
     const amountInput=tr.querySelector('.case-amount-input');
     const rateTd=tr.querySelector('td[data-legacy-gross-rate-cell]') || rateInput?.closest('td');
-    const amountTd=tr.querySelector('td[data-legacy-gross-amount-cell]') || amountInput?.closest('td');
+    const amountTd=tr.querySelector('td[data-legacy-gross-amount-cell]') || (amountInput?.closest('td')?.dataset?.settlementDisplayCell ? null : amountInput?.closest('td'));
     const brokerTd=tr.querySelector('td[data-business-settlement-broker]');
     const companyPctTd=tr.querySelector('.company-split-input')?.closest('td');
     const companyAmtTd=tr.querySelector('.company-fee-amount');
@@ -142,14 +143,16 @@
     const refAmtTd=tr.querySelector('.referrer-fee-amount');
     const netRateTd=tr.querySelector('.net-rate-value');
     const netAmountTd=tr.querySelector('.net-amount-value');
-    if(!rateTd || !amountTd || !brokerTd || !companyPctTd || !companyAmtTd || !refPctTd || !refAmtTd || !netRateTd || !netAmountTd) return;
+    if(!rateTd || !brokerTd || !companyPctTd || !companyAmtTd || !refPctTd || !refAmtTd || !netRateTd || !netAmountTd) return;
 
     rateTd.dataset.legacyGrossRateCell='1';
-    amountTd.dataset.legacyGrossAmountCell='1';
-    [rateTd,amountTd,brokerTd,companyPctTd,companyAmtTd,refPctTd,refAmtTd,netRateTd,netAmountTd].forEach(td=>{
+    if(amountTd) amountTd.dataset.legacyGrossAmountCell='1';
+    [rateTd,amountTd,brokerTd,companyPctTd,companyAmtTd,refPctTd,refAmtTd,netRateTd,netAmountTd].filter(Boolean).forEach(td=>{
       if(!td.matches('[data-settlement-display-cell]')) td.style.display='none';
     });
 
+    moveControl(amountTd,cells.earnings,'收益金額','settlement-earning-control');
+    cells.earnings.querySelector('.amount-control')?.classList.add('settlement-earning-control');
     cells.broker.textContent=String(brokerTd.textContent ?? '').trim() || '0%';
     moveControl(companyPctTd,cells.company,'仲介公司抽成比例','commission-deduction-control');
     moveControl(refPctTd,cells.referrer,'仲介人抽成比例','commission-deduction-control');
@@ -163,7 +166,7 @@
     const refs=findRefs(table);
     if(!refs || !refs.investedTh) return;
     hideLegacyHeaders(refs);
-    removeGrossDisplay(table);
+    removeOldGrossDisplay(table);
     ensureDisplayHeaders(table,refs);
     table.querySelectorAll('tbody tr[data-profit-key]').forEach(tr=>{
       const cells=ensureDisplayCells(tr);
@@ -198,6 +201,10 @@
       .per-case-profit-table{width:max-content!important;min-width:100%!important;table-layout:auto!important;}
       .settlement-display-head{min-width:108px!important;white-space:nowrap!important;text-align:center!important;}
       .settlement-display-cell{min-width:108px!important;width:108px!important;vertical-align:middle!important;padding:8px 10px!important;white-space:nowrap!important;}
+      .settlement-earning-head{background:#f7faff!important;color:#315b92!important;}
+      .settlement-earning-cell{background:#fbfdff!important;}
+      .settlement-earning-control{min-width:96px!important;border-color:#bfd0e5!important;background:#fff!important;}
+      .settlement-earning-control input{width:66px!important;color:#1f4f82!important;font-weight:800!important;}
       .settlement-fee-head{background:#fff5f5!important;color:#b42318!important;}
       .settlement-fee-cell{background:#fffafa!important;color:#b42318!important;}
       .settlement-fee-cell[data-settlement-display-cell="broker"]{font-weight:900!important;text-align:center!important;}
@@ -209,7 +216,7 @@
       .settlement-net-cell{background:#f5fcf8!important;color:#0f7b55!important;font-weight:900!important;text-align:right!important;}
       @media(max-width:700px){
         .investor-projects{margin-left:0!important;margin-right:0!important;}
-        .per-case-profit-table{min-width:880px!important;}
+        .per-case-profit-table{min-width:980px!important;}
         .settlement-display-head,.settlement-display-cell{min-width:104px!important;width:104px!important;}
       }
     `;
