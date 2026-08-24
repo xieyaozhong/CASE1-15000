@@ -65,9 +65,12 @@
       .filter(Boolean).forEach(th=>{ th.style.display='none'; });
   }
 
+  function removeGrossDisplay(table){
+    table.querySelectorAll('th[data-settlement-display="rate"],td[data-settlement-display-cell="rate"]').forEach(el=>el.remove());
+  }
+
   function ensureDisplayHeaders(table,refs){
     const order=[
-      ['rate','收益率','normal'],
       ['broker','仲介費','fee'],
       ['company','仲介公司','fee'],
       ['referrer','仲介人','fee'],
@@ -114,7 +117,7 @@
   function ensureDisplayCells(tr){
     const invested=tr.querySelector('.invested-value');
     if(!invested) return null;
-    const order=[['rate','normal'],['broker','fee'],['company','fee'],['referrer','fee'],['netRate','net'],['netAmount','net']];
+    const order=[['broker','fee'],['company','fee'],['referrer','fee'],['netRate','net'],['netAmount','net']];
     let anchor=invested;
     const out={};
     order.forEach(([role,kind])=>{
@@ -147,9 +150,6 @@
       if(!td.matches('[data-settlement-display-cell]')) td.style.display='none';
     });
 
-    moveControl(rateTd,cells.rate,'收益率');
-    cells.rate.querySelector('.inline-profit-control')?.classList.add('settlement-rate-control');
-
     cells.broker.textContent=String(brokerTd.textContent ?? '').trim() || '0%';
     moveControl(companyPctTd,cells.company,'仲介公司抽成比例','commission-deduction-control');
     moveControl(refPctTd,cells.referrer,'仲介人抽成比例','commission-deduction-control');
@@ -163,6 +163,7 @@
     const refs=findRefs(table);
     if(!refs || !refs.investedTh) return;
     hideLegacyHeaders(refs);
+    removeGrossDisplay(table);
     ensureDisplayHeaders(table,refs);
     table.querySelectorAll('tbody tr[data-profit-key]').forEach(tr=>{
       const cells=ensureDisplayCells(tr);
@@ -197,8 +198,6 @@
       .per-case-profit-table{width:max-content!important;min-width:100%!important;table-layout:auto!important;}
       .settlement-display-head{min-width:108px!important;white-space:nowrap!important;text-align:center!important;}
       .settlement-display-cell{min-width:108px!important;width:108px!important;vertical-align:middle!important;padding:8px 10px!important;white-space:nowrap!important;}
-      .settlement-rate-control{min-width:96px!important;}
-      .settlement-rate-control input{width:58px!important;}
       .settlement-fee-head{background:#fff5f5!important;color:#b42318!important;}
       .settlement-fee-cell{background:#fffafa!important;color:#b42318!important;}
       .settlement-fee-cell[data-settlement-display-cell="broker"]{font-weight:900!important;text-align:center!important;}
@@ -210,7 +209,7 @@
       .settlement-net-cell{background:#f5fcf8!important;color:#0f7b55!important;font-weight:900!important;text-align:right!important;}
       @media(max-width:700px){
         .investor-projects{margin-left:0!important;margin-right:0!important;}
-        .per-case-profit-table{min-width:980px!important;}
+        .per-case-profit-table{min-width:880px!important;}
         .settlement-display-head,.settlement-display-cell{min-width:104px!important;width:104px!important;}
       }
     `;
