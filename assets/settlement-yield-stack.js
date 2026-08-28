@@ -3,6 +3,7 @@
 
   const OVERRIDE_KEY = 'case1-investor-settlement-overrides-v2';
   let raf = 0;
+  let followupRaf = 0;
 
   const num = value => {
     const n = Number(String(value ?? '').replaceAll(',', '').replace(/[+%]/g, '').trim());
@@ -37,6 +38,16 @@
     raf = requestAnimationFrame(() => {
       raf = 0;
       decorate();
+    });
+  }
+
+  function scheduleAfterReact() {
+    if (followupRaf) cancelAnimationFrame(followupRaf);
+    followupRaf = requestAnimationFrame(() => {
+      followupRaf = requestAnimationFrame(() => {
+        followupRaf = 0;
+        schedule();
+      });
     });
   }
 
@@ -206,16 +217,18 @@
   }
 
   function bind() {
-    const root = document.getElementById('root');
-    if (root) new MutationObserver(schedule).observe(root, { childList: true, subtree: true });
     document.addEventListener('input', event => {
       if (event.target?.closest?.('.investor-settlement-input.company,.investor-settlement-input.personal')) {
-        setTimeout(schedule, 0);
+        schedule();
       }
     }, true);
-    document.addEventListener('click', () => setTimeout(schedule, 30), true);
+
+    document.addEventListener('click', event => {
+      if (event.target?.closest?.('.period-controls button')) scheduleAfterReact();
+    }, true);
+
     window.addEventListener('storage', event => {
-      if (event.key === OVERRIDE_KEY) schedule();
+      if (event.key === OVERRIDE_KEY) scheduleAfterReact();
     });
   }
 
