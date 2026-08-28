@@ -4,6 +4,7 @@
   const APP_KEY = 'settlement-ledger-v1';
   let requested = false;
   let raf = 0;
+  let followupRaf = 0;
 
   const clean = value => String(value ?? '').trim();
   const money = value => {
@@ -46,12 +47,13 @@
 
   function renderFallback(panel, rows) {
     if (!rows.length) {
+      if (panel.dataset.signature === 'empty') return;
+      panel.dataset.signature = 'empty';
       panel.innerHTML = `
         <div class="bad-debt-empty-state">
           <strong>目前沒有呆帳案件</strong>
           <span>可使用「＋ 呆帳」新增，或將案件狀態標記為呆帳。</span>
         </div>`;
-      panel.dataset.signature = 'empty';
       return;
     }
 
@@ -80,6 +82,12 @@
       </div>`;
   }
 
+  function clearFallback(viewport, sheetWrap) {
+    sheetWrap?.classList.remove('bad-debt-list-mode');
+    viewport?.classList.remove('bad-debt-force-view');
+    viewport?.querySelector(':scope > .bad-debt-list-fallback')?.remove();
+  }
+
   function decorate() {
     raf = 0;
     const tab = activeTab();
@@ -88,33 +96,47 @@
     const sheetWrap = document.querySelector('.sheet-wrap');
     if (!tab || !viewport || !tbody || !sheetWrap) return;
 
-    const inBadDebtMode = requested || isReactBadDebtActive();
-    sheetWrap.classList.toggle('bad-debt-list-mode', inBadDebtMode);
-    viewport.classList.toggle('bad-debt-force-view', inBadDebtMode);
+    const reactActive = isReactBadDebtActive();
+    const inBadDebtMode = requested || reactActive;
+    if (!inBadDebtMode) {
+      clearFallback(viewport, sheetWrap);
+      return;
+    }
+
+    sheetWrap.classList.add('bad-debt-list-mode');
+    viewport.classList.add('bad-debt-force-view');
 
     const existingPanel = viewport.querySelector(':scope > .bad-debt-list-fallback');
-    if (!inBadDebtMode) {
-      existingPanel?.remove();
+    const renderedBadRows = tbody.querySelectorAll('tr.bad-debt-row');
+    const renderedOtherRow = tbody.querySelector('tr:not(.bad-debt-row)');
+
+    if (reactActive) {
+      if (renderedBadRows.length > 0 && !renderedOtherRow) {
+        existingPanel?.remove();
+        return;
+      }
+      const panel = existingPanel || ensurePanel(viewport);
+      renderFallback(panel, []);
       return;
     }
 
-    const badRows = readBadDebts();
-    const renderedBadRows = [...tbody.querySelectorAll('tr.bad-debt-row')];
-    const renderedOtherRows = [...tbody.querySelectorAll('tr:not(.bad-debt-row)')];
-    const reactListReady = renderedBadRows.length === badRows.length && renderedOtherRows.length === 0;
-
-    if (reactListReady && badRows.length > 0) {
-      existingPanel?.remove();
-      return;
-    }
-
-    const panel = ensurePanel(viewport);
-    renderFallback(panel, badRows);
+    const panel = existingPanel || ensurePanel(viewport);
+    renderFallback(panel, readBadDebts());
   }
 
   function schedule() {
     if (raf) return;
     raf = requestAnimationFrame(decorate);
+  }
+
+  function scheduleAfterReact() {
+    if (followupRaf) cancelAnimationFrame(followupRaf);
+    followupRaf = requestAnimationFrame(() => {
+      followupRaf = requestAnimationFrame(() => {
+        followupRaf = 0;
+        schedule();
+      });
+    });
   }
 
   function injectStyle() {
@@ -156,30 +178,33 @@
       const badDebtTab = event.target?.closest?.('.bad-debt-tab');
       if (badDebtTab) {
         requested = true;
-        window.setTimeout(() => {
-          const viewport = document.querySelector('.grid-viewport');
-          if (viewport) {
-            viewport.scrollTop = 0;
-            viewport.scrollLeft = 0;
-          }
-          schedule();
-        }, 0);
-        window.setTimeout(schedule, 80);
+        const viewport = document.querySelector('.grid-viewport');
+        if (viewport) {
+          viewport.scrollTop = 0;
+          viewport.scrollLeft = 0;
+        }
+        scheduleAfterReact();
         return;
       }
 
       const otherTab = event.target?.closest?.('.month-tab-track button:not(.bad-debt-tab)');
       if (otherTab) {
         requested = false;
-        window.setTimeout(schedule, 0);
+        scheduleAfterReact();
+        return;
+      }
+
+      if (event.target?.closest?.('.bad-debt-chip,.bad-debt-modal,.manage-bad-debt')) {
+        scheduleAfterReact();
       }
     }, true);
 
-    const root = document.getElementById('root');
-    if (root) new MutationObserver(schedule).observe(root, { childList: true, subtree: true });
+    document.addEventListener('change', event => {
+      if (event.target?.closest?.('.bad-debt-modal')) scheduleAfterReact();
+    }, true);
 
     window.addEventListener('storage', event => {
-      if (event.key === APP_KEY) schedule();
+      if (event.key === APP_KEY) scheduleAfterReact();
     });
   }
 
