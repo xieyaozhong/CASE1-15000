@@ -1,115 +1,21 @@
 <!doctype html>
 <html lang="zh-Hant-TW">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b1f3a" />
-  <title>週結算中心｜Excel 工作表</title>
-  <link rel="stylesheet" href="assets/styles.css" />
-  <link rel="stylesheet" href="assets/excel-ledger.css?v=20260828-1144" />
-  <style id="ledger-layout-fix">
-    .sheet-toolbar{position:relative!important;top:auto!important;z-index:10!important;display:grid!important;gap:10px!important;padding:12px 16px!important;background:#f7f9fc!important;backdrop-filter:none!important;}
-    .period-panel{display:grid;grid-template-columns:minmax(240px,.85fr) minmax(480px,1.35fr);gap:10px 18px;align-items:end;background:linear-gradient(135deg,#fff 0%,#f5f8ff 100%);border:1px solid #d8e4f5;border-radius:14px;padding:12px 14px;box-shadow:0 5px 18px rgba(16,31,53,.06);}
-    .period-panel-copy{min-width:0;}
-    .toolbar-kicker{display:block;font-size:9px;letter-spacing:.16em;color:#4a6fa9;font-weight:800;margin-bottom:4px;}
-    .period-title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-    .period-title-row strong{font-size:19px;letter-spacing:-.02em;}
-    .period-rule-pill{font-size:10px;font-weight:700;color:#0f6c50;background:#eaf7f1;border-radius:999px;padding:4px 8px;}
-    .period-panel-copy p{margin:5px 0 0;color:#65748a;font-size:11px;line-height:1.45;}
-    .period-controls{display:grid;grid-template-columns:minmax(150px,1fr) 24px minmax(150px,1fr) auto;gap:8px;align-items:end;}
-    .date-field{display:grid;gap:4px;font-size:10px;font-weight:700;color:#526178;}
-    .date-field .compact-input{width:100%;height:36px;}
-    .range-sep-large{display:grid;place-items:center;height:36px;color:#7890b8;font-weight:800;}
-    .settle-action{height:36px;min-width:96px;}
-    .period-notes{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid #e5ebf4;padding-top:8px;}
-    .note-chip{font-size:10px;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:4px 8px;}
-    .toolbar-actions{display:flex!important;gap:7px!important;align-items:center!important;flex-wrap:wrap!important;}
-    .sheet-wrap{margin-top:12px!important;}
-    .grid-viewport{max-height:72vh!important;scroll-margin-top:70px;}
-    .sheet-grid thead th{top:0!important;}
-    @media(max-width:900px){
-      .period-panel{grid-template-columns:1fr;}
-      .period-controls{grid-template-columns:1fr 22px 1fr auto;}
-    }
-    @media(max-width:620px){
-      .sheet-toolbar{padding:9px 10px!important;}
-      .period-panel{padding:10px;}
-      .period-panel-copy p{display:none;}
-      .period-controls{grid-template-columns:1fr 1fr;}
-      .range-sep-large{display:none;}
-      .settle-action{grid-column:1/-1;width:100%;}
-      .period-notes{display:none;}
-      .toolbar-actions .mini-btn,.toolbar-actions label.mini-btn{flex:1 1 calc(50% - 7px);}
-      .grid-viewport{max-height:76vh!important;}
-    }
-  </style>
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-  <script src="config.js"></script>
-</head>
-<body class="ledger-page">
-<div class="ledger-shell">
-  <header class="sheet-topbar">
-    <a class="sheet-brand" href="admin.html"><span class="sheet-logo">Σ</span><span><strong>週結算中心</strong><small>Excel 工作表</small></span></a>
-    <div class="sheet-state"><span id="saveState">已自動儲存</span></div>
-  </header>
-
-  <main>
-    <section class="sheet-toolbar" aria-label="工作表工具列">
-      <div class="period-panel">
-        <div class="period-panel-copy">
-          <span class="toolbar-kicker">SETTLEMENT WINDOW</span>
-          <div class="period-title-row"><strong>結算區間</strong><span class="period-rule-pill">逐案收益預設 6%</span></div>
-          <p>週期預設 28 天，起始日當天算第 1 天；系統會自動推算今天起最近的下一個結算日，再依投資人整理投入金額與逐案收益。</p>
-        </div>
-        <div class="period-controls">
-          <label class="date-field" for="rangeStart"><span>起始日</span><input id="rangeStart" class="compact-input" type="date" /></label>
-          <span class="range-sep range-sep-large" aria-hidden="true">→</span>
-          <label class="date-field" for="rangeEnd"><span>結束日</span><input id="rangeEnd" class="compact-input" type="date" /></label>
-          <button id="settleBtn" class="mini-btn primary settle-action" type="button">開始結算</button>
-        </div>
-        <div class="period-notes"><span class="note-chip">週期預設 28 天</span><span class="note-chip">起始日算第 1 天</span><span class="note-chip">仲介費自獲利扣除</span></div>
-      </div>
-      <div class="toolbar-actions">
-        <button id="addRowBtn" class="mini-btn" type="button">＋ 新增列</button>
-        <button id="addInvestorBtn" class="mini-btn" type="button">＋ 投資人</button>
-        <label class="mini-btn file-btn">匯入 Excel<input id="excelInput" type="file" accept=".xlsx,.xls" hidden></label>
-        <button id="exportBtn" class="mini-btn" type="button">匯出 Excel</button>
-        <button id="clearBtn" class="mini-btn" type="button">還原原表</button>
-      </div>
-    </section>
-
-    <section class="sheet-wrap">
-      <div class="sheet-caption"><div><strong>主工作表</strong><span>直接點格子即可編輯；欄位可排序、調整寬度。</span></div><div id="rowCount" class="row-count">0 筆</div></div>
-      <div id="gridViewport" class="grid-viewport"><table id="sheetGrid" class="sheet-grid" aria-label="收益結算工作表"></table></div>
-      <div class="sheet-hint">總表下方的月份工作表會依「最近結算日」自動分類；最近結算日重新計算後，案件會自動移到新的結算月份。結算明細依序顯示：投入金額 → 收益 → 仲介費 → 仲介公司 → 仲介人 → 淨收益率 → 淨收益金額。</div>
-    </section>
-
-    <section id="settlementSection" class="settlement-section">
-      <div class="settlement-head"><div><h2>投資人區間結算</h2><p id="settlementRangeText">選擇日期區間後按「結算」，系統會依最近結算日整理每位投資人的案件、仲介扣款與收益。</p></div><button id="exportSettlementBtn" class="mini-btn" type="button" disabled>匯出結算表</button></div>
-      <div id="investorGroups" class="investor-groups"><div class="empty-result">尚未執行區間結算</div></div>
-    </section>
-  </main>
-</div>
-
-<div id="investorDialog" class="modal-backdrop" hidden>
-  <form id="investorForm" class="mini-modal"><h3>新增投資人欄位</h3><label>投資人名稱<input id="investorName" class="compact-input" autocomplete="off" required placeholder="例如：王先生"></label><div class="modal-actions"><button id="cancelInvestor" class="mini-btn" type="button">取消</button><button class="mini-btn primary" type="submit">新增</button></div></form>
-</div>
-
-<script src="assets/original-ledger-seed.js"></script>
-<script src="assets/schema-bridge.js?v=20260823-1548"></script>
-<script src="assets/excel-ledger.js?v=20260823-1548"></script>
-<script src="assets/per-case-profit.js?v=20260823-1548"></script>
-<script src="assets/add-project.js?v=20260823-1548"></script>
-<script src="assets/sort-columns.js?v=20260823-1548"></script>
-<script src="assets/delete-investor.js?v=20260823-1548"></script>
-<script src="assets/business-columns.js?v=20260823-1548"></script>
-<script src="assets/payer-column.js?v=20260823-1548"></script>
-<script src="assets/column-resize.js?v=20260823-1548"></script>
-<script src="assets/auto-cycle.js?v=20260823-1548"></script>
-<script src="assets/commission-split.js?v=20260823-1548"></script>
-<script src="assets/commission-display.js?v=20260824-1132"></script>
-<script src="assets/month-sheets.js?v=20260823-1553"></script>
-<script src="assets/investor-overview.js?v=20260823-1603"></script>
-<script src="assets/hide-gross-fields.js?v=20260828-1148"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#217346" />
+    <meta name="description" content="以試算表介面管理投資案件、呆帳、結算週期與投資人收益。" />
+    <meta property="og:title" content="週結算中心｜Excel 工作表" />
+    <meta property="og:description" content="管理投資案件、呆帳、仲介費與投資人收益。" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://xieyaozhong.github.io/CASE1-15000/excel-ledger.html" />
+    <meta property="og:image" content="https://xieyaozhong.github.io/CASE1-15000/og.png" />
+    <link rel="icon" href="/CASE1-15000/favicon.svg" />
+    <title>週結算中心｜Excel 工作表</title>
+    <script type="module" crossorigin src="/CASE1-15000/assets/excel-ledger-BMSWeuzC.js"></script>
+    <link rel="stylesheet" crossorigin href="/CASE1-15000/assets/excel-ledger-B-Q_I3Ll.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
