@@ -5,6 +5,7 @@
   const MIN_COLUMN = 54;
   const HANDLE_WIDTH = 14;
   let raf = 0;
+  let inputTimer = 0;
   let measureCanvas = null;
   let measureContext = null;
 
@@ -100,9 +101,8 @@
       if (wrap) {
         const suffix = [...wrap.querySelectorAll('em')].filter(visible).map(el => clean(el.textContent)).join(' ');
         if (suffix) width += textWidth(suffix, wrap) + 12;
-        const sublines = [...wrap.querySelectorAll('small')].filter(visible).map(el => clean(el.textContent));
-        sublines.forEach(line => {
-          width = Math.max(width, textWidth(line, wrap) + 18);
+        [...wrap.querySelectorAll('small')].filter(visible).forEach(el => {
+          width = Math.max(width, textWidth(clean(el.textContent), wrap) + 18);
         });
       }
       needed = Math.max(needed, width + chrome + 8);
@@ -112,8 +112,7 @@
       if (!visible(button)) return;
       const buttonStyle = getComputedStyle(button);
       const buttonChrome = px(buttonStyle.paddingLeft) + px(buttonStyle.paddingRight) + px(buttonStyle.borderLeftWidth) + px(buttonStyle.borderRightWidth);
-      const width = textWidth(button.textContent, button) + buttonChrome + chrome + HANDLE_WIDTH + 12;
-      needed = Math.max(needed, width);
+      needed = Math.max(needed, textWidth(button.textContent, button) + buttonChrome + chrome + HANDLE_WIDTH + 12);
     });
 
     return Math.ceil(needed);
@@ -133,17 +132,20 @@
     return Math.ceil(min);
   }
 
+  function styleCell(cell, width) {
+    if (!cell) return;
+    cell.style.setProperty('width', `${width}px`, 'important');
+    cell.style.setProperty('min-width', `${width}px`, 'important');
+    cell.style.setProperty('max-width', 'none', 'important');
+  }
+
   function applyWidth(table, index, width) {
     const safeWidth = Math.max(MIN_COLUMN, Math.ceil(width));
     matchingTables(table).forEach(current => {
       current.classList.add('safe-resizable-table');
-      [...current.rows].forEach(row => {
-        const cell = row.cells?.[index];
-        if (!cell) return;
-        cell.style.setProperty('width', `${safeWidth}px`, 'important');
-        cell.style.setProperty('min-width', `${safeWidth}px`, 'important');
-        cell.style.setProperty('max-width', 'none', 'important');
-      });
+      [...current.rows].forEach(row => styleCell(row.cells?.[index], safeWidth));
+      if (!Array.isArray(current.__case1ColumnWidths)) current.__case1ColumnWidths = [];
+      current.__case1ColumnWidths[index] = safeWidth;
     });
     return safeWidth;
   }
@@ -154,20 +156,21 @@
     writeWidths(widths);
   }
 
-  function ensureColumn(table, index, persistExpansion = true) {
+  function ensureColumn(table, index, persistExpansion = true, widths = null) {
     if (!table || index < 0) return;
-    const widths = readWidths();
+    const store = widths || readWidths();
     const key = columnKey(table, index);
     const min = measureColumnMin(table, index);
     const head = table.tHead?.rows?.[0]?.cells?.[index];
     const current = Math.ceil(head?.getBoundingClientRect().width || min);
-    const saved = Number(widths[key]);
+    const saved = Number(store[key]);
     const desired = Math.max(min, Number.isFinite(saved) && saved > 0 ? saved : current);
     const applied = applyWidth(table, index, desired);
     if (persistExpansion && (!Number.isFinite(saved) || saved < applied)) {
-      widths[key] = applied;
-      writeWidths(widths);
+      store[key] = applied;
+      return true;
     }
+    return false;
   }
 
   function beginResize(event, handle) {
@@ -192,8 +195,7 @@
     const onMove = moveEvent => {
       moveEvent.preventDefault();
       moveEvent.stopPropagation();
-      const next = Math.max(min, startWidth + (moveEvent.clientX - startX));
-      lastWidth = applyWidth(table, index, next);
+      lastWidth = applyWidth(table, index, Math.max(min, startWidth + (moveEvent.clientX - startX)));
     };
 
     const onUp = upEvent => {
@@ -205,7 +207,6 @@
       document.body.classList.remove('is-column-resizing');
       th.classList.remove('is-resizing-column');
       persistWidth(table, index, Math.max(min, lastWidth));
-      schedule();
     };
 
     window.addEventListener('pointermove', onMove, { capture: true, passive: false });
@@ -241,6 +242,21 @@
     th.appendChild(handle);
   }
 
+  function applyCachedWidthsToRows(table, rows) {
+    if (!table || !rows.length) return;
+    const cached = table.__case1ColumnWidths;
+    if (!Array.isArray(cached) || cached.length === 0) {
+      schedule();
+      return;
+    }
+    rows.forEach(row => {
+      if (!(row instanceof HTMLTableRowElement)) return;
+      cached.forEach((width, index) => {
+        if (Number.isFinite(width) && width > 0) styleCell(row.cells?.[index], width);
+      });
+    });
+  }
+
   function decorate() {
     raf = 0;
     const tables = [
@@ -248,6 +264,8 @@
       ...document.querySelectorAll('table.result-table')
     ];
     const processed = new Set();
+    const widths = readWidths();
+    let dirty = false;
 
     tables.forEach(table => {
       table.classList.add('safe-resizable-table');
@@ -258,14 +276,50 @@
         const key = columnKey(table, index);
         if (processed.has(key)) return;
         processed.add(key);
-        ensureColumn(table, index, true);
+        if (ensureColumn(table, index, true, widths)) dirty = true;
       });
     });
+
+    if (dirty) writeWidths(widths);
   }
 
   function schedule() {
     if (raf) return;
     raf = requestAnimationFrame(decorate);
+  }
+
+  function mutationNeedsFullDecorate(node) {
+    if (!(node instanceof Element)) return false;
+    return node.matches('table.sheet-grid,table.result-table,thead') ||
+      !!node.querySelector('table.sheet-grid,table.result-table,thead');
+  }
+
+  function handleMutations(mutations) {
+    let needsFull = false;
+    const rowBatches = new Map();
+
+    mutations.forEach(mutation => {
+      [...mutation.addedNodes].forEach(node => {
+        if (mutationNeedsFullDecorate(node)) needsFull = true;
+      });
+
+      const target = mutation.target instanceof Element ? mutation.target : mutation.target?.parentElement;
+      const table = target?.closest?.('table.sheet-grid,table.result-table');
+      if (!table || needsFull) return;
+
+      const rows = [];
+      [...mutation.addedNodes].forEach(node => {
+        if (node instanceof HTMLTableRowElement) rows.push(node);
+        else if (node instanceof Element) rows.push(...node.querySelectorAll('tr'));
+      });
+      if (rows.length) rowBatches.set(table, [...(rowBatches.get(table) || []), ...rows]);
+    });
+
+    if (needsFull) {
+      schedule();
+      return;
+    }
+    rowBatches.forEach((rows, table) => applyCachedWidthsToRows(table, rows));
   }
 
   function injectStyle() {
@@ -289,13 +343,14 @@
 
   function bind() {
     const root = document.getElementById('root');
-    if (root) new MutationObserver(schedule).observe(root, { childList: true, subtree: true });
+    if (root) new MutationObserver(handleMutations).observe(root, { childList: true, subtree: true });
 
     document.addEventListener('input', event => {
       const table = event.target?.closest?.('table.sheet-grid,table.result-table');
       const cell = event.target?.closest?.('td,th');
       if (!table || !cell) return;
-      window.setTimeout(() => ensureColumn(table, cell.cellIndex, true), 0);
+      window.clearTimeout(inputTimer);
+      inputTimer = window.setTimeout(() => ensureColumn(table, cell.cellIndex, true), 120);
     }, true);
 
     window.addEventListener('resize', schedule, { passive: true });
