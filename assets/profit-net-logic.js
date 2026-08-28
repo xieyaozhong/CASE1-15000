@@ -5,6 +5,7 @@
   const OVERRIDE_KEY = 'case1-investor-settlement-overrides-v2';
   const DAY = 86400000;
   let raf = 0;
+  let followupRaf = 0;
 
   const clean = value => String(value ?? '').trim();
   const num = value => {
@@ -145,6 +146,16 @@
     });
   }
 
+  function scheduleAfterReact() {
+    if (followupRaf) cancelAnimationFrame(followupRaf);
+    followupRaf = requestAnimationFrame(() => {
+      followupRaf = requestAnimationFrame(() => {
+        followupRaf = 0;
+        schedule();
+      });
+    });
+  }
+
   function currentRange() {
     const inputs = [...document.querySelectorAll('.period-controls input[type="date"]')];
     return { start: inputs[0]?.value || '', end: inputs[1]?.value || '' };
@@ -214,12 +225,17 @@
 
   document.addEventListener('input', event => {
     clampFeeInput(event.target);
-    schedule();
+    if (event.target?.closest?.('.sheet-grid,.project-modal,.investor-settlement-input')) schedule();
   }, true);
-  document.addEventListener('click', exportNetSettlement, true);
-  document.addEventListener('click', () => setTimeout(schedule, 30), true);
 
-  const root = document.getElementById('root');
-  if (root) new MutationObserver(schedule).observe(root, { childList: true, subtree: true });
+  document.addEventListener('click', exportNetSettlement, true);
+  document.addEventListener('click', event => {
+    const button = event.target?.closest?.('button');
+    if (!button) return;
+    if (button.closest('.period-controls,.toolbar-actions') || clean(button.textContent).includes('新增投資案')) {
+      scheduleAfterReact();
+    }
+  }, true);
+
   schedule();
 })();
