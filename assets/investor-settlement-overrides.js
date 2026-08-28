@@ -5,6 +5,7 @@
   const OVERRIDE_KEY = 'case1-investor-settlement-overrides-v2';
   const DAY = 86400000;
   let raf = 0;
+  let followupRaf = 0;
 
   const num = value => {
     const n = Number(String(value ?? '').replaceAll(',', '').trim());
@@ -341,6 +342,16 @@
     raf = requestAnimationFrame(decorate);
   }
 
+  function scheduleAfterReact() {
+    if (followupRaf) cancelAnimationFrame(followupRaf);
+    followupRaf = requestAnimationFrame(() => {
+      followupRaf = requestAnimationFrame(() => {
+        followupRaf = 0;
+        schedule();
+      });
+    });
+  }
+
   function csvEscape(value) {
     const text = String(value ?? '');
     return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -402,20 +413,21 @@
   }
 
   function bind() {
-    const root = document.getElementById('root');
-    if (root) {
-      const observer = new MutationObserver(schedule);
-      observer.observe(root, { childList: true, subtree: true });
-    }
     document.addEventListener('input', event => {
-      if (event.target?.closest?.('.sheet-grid,.project-modal')) setTimeout(schedule, 0);
+      if (event.target?.closest?.('.sheet-grid,.project-modal')) schedule();
     }, true);
+
     document.addEventListener('click', event => {
-      if (event.target?.closest?.('.month-tab-track button,.period-controls button')) setTimeout(schedule, 30);
+      const monthOrSettlement = event.target?.closest?.('.month-tab-track button,.period-controls button');
+      const button = event.target?.closest?.('button');
+      if (monthOrSettlement || (button && clean(button.textContent).includes('新增投資案'))) {
+        scheduleAfterReact();
+      }
     }, true);
+
     document.addEventListener('click', interceptSettlementExport, true);
     window.addEventListener('storage', event => {
-      if ([APP_KEY, OVERRIDE_KEY].includes(event.key)) schedule();
+      if ([APP_KEY, OVERRIDE_KEY].includes(event.key)) scheduleAfterReact();
     });
   }
 
