@@ -109,6 +109,45 @@
         min-width:980px!important;
         max-width:none!important;
         table-layout:auto!important;
+        border-collapse:separate!important;
+        border-spacing:0!important;
+      }
+      body.ledger-page .per-case-profit-table th,
+      body.ledger-page .per-case-profit-table td{
+        box-sizing:border-box!important;
+        height:auto!important;
+        min-height:44px!important;
+        padding-top:10px!important;
+        padding-bottom:10px!important;
+        line-height:1.35!important;
+        vertical-align:middle!important;
+        border-top:0!important;
+        border-bottom:1px solid #edf0f4!important;
+        background-clip:padding-box!important;
+      }
+      body.ledger-page .per-case-profit-table thead th{
+        padding-top:9px!important;
+        padding-bottom:9px!important;
+        line-height:1.3!important;
+      }
+      body.ledger-page .per-case-profit-table tbody tr:last-child td{
+        border-bottom:0!important;
+      }
+      body.ledger-page .per-case-profit-table .inline-profit-control{
+        height:34px!important;
+        min-height:34px!important;
+        margin:1px 0!important;
+        line-height:1!important;
+        vertical-align:middle!important;
+      }
+      body.ledger-page .per-case-profit-table input{
+        line-height:1.2!important;
+        vertical-align:middle!important;
+      }
+      body.ledger-page .commission-deduction-amount{
+        line-height:1.3!important;
+        margin-top:6px!important;
+        padding-bottom:1px!important;
       }
       body.ledger-page .investor-group-head>*,
       body.ledger-page .per-case-summary>*{min-width:0!important;}
