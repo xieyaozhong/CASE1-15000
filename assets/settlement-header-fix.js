@@ -2,7 +2,9 @@
   'use strict';
 
   function injectStyle() {
-    if (document.getElementById('settlement-header-fix-style')) return;
+    const existing = document.getElementById('settlement-header-fix-style');
+    if (existing) existing.remove();
+
     const style = document.createElement('style');
     style.id = 'settlement-header-fix-style';
     style.textContent = `
@@ -25,8 +27,10 @@
         gap:0!important;
         padding:0!important;
         overflow:hidden!important;
-        background:linear-gradient(135deg,#0b57d0 0%,#236fd8 58%,#3b82e6 100%)!important;
-        border-bottom:1px solid rgba(13,57,119,.22)!important;
+        background:linear-gradient(135deg,#dceaf8 0%,#e8f2fb 54%,#f2f7fc 100%)!important;
+        border:1px solid #cfdeed!important;
+        border-bottom-color:#c7d8e9!important;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.72)!important;
       }
 
       .settlement-group-head>div{
@@ -38,7 +42,7 @@
         flex-direction:column!important;
         justify-content:center!important;
         overflow:hidden!important;
-        border-right:1px solid rgba(255,255,255,.16)!important;
+        border-right:1px solid rgba(92,128,164,.15)!important;
       }
 
       .settlement-group-head>div:last-child{
@@ -49,7 +53,7 @@
         display:block!important;
         max-width:100%!important;
         margin:0!important;
-        color:rgba(255,255,255,.76)!important;
+        color:#6d8298!important;
         font-size:10px!important;
         font-weight:750!important;
         line-height:1.25!important;
@@ -62,7 +66,7 @@
         display:block!important;
         max-width:100%!important;
         margin:4px 0 0!important;
-        color:#fff!important;
+        color:#294d73!important;
         line-height:1.18!important;
         white-space:normal!important;
         overflow-wrap:anywhere!important;
@@ -84,7 +88,7 @@
       }
 
       .settlement-group-head .net-profit b{
-        color:#d9ffed!important;
+        color:#27835a!important;
       }
 
       .settlement-group .result-scroll{
@@ -99,7 +103,7 @@
         }
         .settlement-group-head>div{
           min-height:66px!important;
-          border-bottom:1px solid rgba(255,255,255,.13)!important;
+          border-bottom:1px solid rgba(92,128,164,.13)!important;
         }
         .settlement-group-head>div:nth-child(2n){
           border-right:0!important;
@@ -126,7 +130,7 @@
           border-right:0!important;
         }
         .settlement-group-head>div:nth-child(2){
-          border-bottom:1px solid rgba(255,255,255,.13)!important;
+          border-bottom:1px solid rgba(92,128,164,.13)!important;
         }
         .settlement-group-head b{
           text-align:left!important;
@@ -145,7 +149,7 @@
         .settlement-group-head>div:first-child{
           grid-column:1!important;
           border-right:0!important;
-          border-bottom:1px solid rgba(255,255,255,.13)!important;
+          border-bottom:1px solid rgba(92,128,164,.13)!important;
         }
         .settlement-group-head>div:last-child{
           border-bottom:0!important;
