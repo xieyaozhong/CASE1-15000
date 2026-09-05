@@ -10,10 +10,22 @@
 .sort-button{padding-left:4px!important;padding-right:4px!important}
 .sheet-grid thead th i{margin-left:2px!important}
 
-/* Default numeric / investor columns. */
+/* Default numeric columns. */
 .sheet-grid col[data-column-key]{width:52px}
-.sheet-grid thead th.investor-col{min-width:46px!important;width:46px!important}
-.sheet-grid td.investor-cell{min-width:46px!important}
+
+/* Investor columns: keep each investor as narrow as practical. */
+.sheet-grid thead th.investor-col{min-width:38px!important;width:38px!important;max-width:38px!important}
+.sheet-grid td.investor-cell{min-width:38px!important;width:38px!important;max-width:38px!important}
+.sheet-grid td.investor-cell input{width:38px!important;min-width:0!important;padding-left:2px!important;padding-right:2px!important;text-align:right!important}
+.sheet-grid col[data-column-key$=":碩"],
+.sheet-grid col[data-column-key$=":可"],
+.sheet-grid col[data-column-key$=":楊"],
+.sheet-grid col[data-column-key$=":弘"],
+.sheet-grid col[data-column-key$=":文"],
+.sheet-grid col[data-column-key$=":豪"],
+.sheet-grid col[data-column-key$=":浚"],
+.sheet-grid col[data-column-key$=":岳"],
+.sheet-grid col[data-column-key$=":羊"]{width:38px!important}
 
 /* Tight widths by field. */
 .sheet-grid col[data-column-key^="sheet:0:"]{width:32px!important}
@@ -65,10 +77,14 @@
 }
 .sheet-grid td input[type=date]:focus{width:max(100%,138px)!important;min-width:138px!important}
 .sheet-grid td input[type=number]:focus{width:max(100%,108px)!important;min-width:108px!important}
+.sheet-grid td.investor-cell input:focus{width:92px!important;min-width:92px!important}
 
 @media(max-width:900px){
   .sheet-wrap{width:calc(100% - 6px)!important;max-width:calc(100% - 6px)!important;margin-left:3px!important;margin-right:3px!important}
   .sheet-grid col[data-column-key]{width:48px}
+  .sheet-grid thead th.investor-col,.sheet-grid td.investor-cell{width:36px!important;min-width:36px!important;max-width:36px!important}
+  .sheet-grid td.investor-cell input{width:36px!important}
+  .sheet-grid col[data-column-key$=":碩"],.sheet-grid col[data-column-key$=":可"],.sheet-grid col[data-column-key$=":楊"],.sheet-grid col[data-column-key$=":弘"],.sheet-grid col[data-column-key$=":文"],.sheet-grid col[data-column-key$=":豪"],.sheet-grid col[data-column-key$=":浚"],.sheet-grid col[data-column-key$=":岳"],.sheet-grid col[data-column-key$=":羊"]{width:36px!important}
   .sheet-grid col[data-column-key$=":起租案名"]{width:70px!important}
   .sheet-grid col[data-column-key$=":案源"],.sheet-grid col[data-column-key$=":撥款人"]{width:50px!important}
   .sheet-grid col[data-column-key$=":案件金額"],.sheet-grid col[data-column-key$=":參與總額"]{width:58px!important}
