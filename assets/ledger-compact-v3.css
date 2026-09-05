@@ -1,45 +1,78 @@
-/* Main ledger ultra-compact layout — keeps the investment sheet dense without changing data logic. */
-.sheet-wrap{width:calc(100% - 12px)!important;max-width:calc(100% - 12px)!important;margin:6px 6px 0!important;border-radius:8px!important}
-.sheet-caption{min-height:34px!important;padding:5px 8px!important;font-size:10px!important}
-.sheet-caption strong{margin-right:5px!important}.view-count{min-width:40px!important}
-.grid-viewport{max-height:clamp(390px,70vh,760px)!important}
-.sheet-grid{font-size:9px!important;line-height:1.05!important}
-.sheet-grid col[data-column-key]{width:62px}
-.sheet-grid col[data-column-key^="sheet:0:"]{width:30px!important}
-.sheet-grid col[data-column-key$=":日期"]{width:86px}
-.sheet-grid col[data-column-key$=":起租案名"]{width:82px}
-.sheet-grid col[data-column-key$=":案源"],.sheet-grid col[data-column-key$=":撥款人"]{width:62px}
-.sheet-grid col[data-column-key$=":案件金額"],.sheet-grid col[data-column-key$=":參與總額"]{width:68px}
-.sheet-grid col[data-column-key$=":週期"]{width:48px}
-.sheet-grid col[data-column-key$=":最近結算日"]{width:86px}
-.sheet-grid col[data-column-key$=":收益"]{width:54px}
-.sheet-grid col[data-column-key$=":仲介費"]{width:58px}
-.sheet-grid col[data-column-key$=":公司仲介費"],.sheet-grid col[data-column-key$=":個人仲介費"]{width:66px}
-.sheet-grid col[data-column-key$=":狀態"]{width:58px}
-.sheet-grid col[data-column-key$=":備註"]{width:98px}
-.sheet-grid th,.sheet-grid td{height:28px!important;min-height:28px!important;padding:0!important}
-.sheet-grid thead th{min-width:54px!important;height:29px!important;font-size:8px!important;line-height:1.02!important}
-.sheet-grid thead th.investor-col{min-width:48px!important}
-.sheet-grid thead th.key-col{min-width:64px!important}
-.sheet-grid .row-no{left:74px!important;width:30px!important;min-width:30px!important;font-size:8px!important}
-.sheet-grid td input{width:100%!important;min-width:0!important;height:27px!important;min-height:27px!important;padding:0 3px!important;font-size:9px!important;line-height:1!important}
-.sheet-grid td input[type=number]{padding-left:2px!important;padding-right:3px!important}
-.sheet-grid td.has-suffix input{padding-right:13px!important}
-.sheet-grid td em{top:9px!important;right:3px!important;font-size:7px!important}
-.sort-button{height:28px!important;padding:0 2px!important;font-size:8px!important;line-height:1.05!important;white-space:normal!important;overflow:hidden!important}
-.sheet-grid thead th i{margin-left:2px!important;font-size:7px!important}.sheet-grid thead th small{display:none!important}
-.native-col-resizer{width:8px!important;right:-4px!important}.native-col-resizer:after{left:3px!important}
-.sheet-grid .portfolio-status-head{width:74px!important;min-width:74px!important;max-width:74px!important;font-size:8px!important}
-.sheet-grid col.portfolio-status-col{width:74px!important}
-.sheet-grid .portfolio-status-cell{width:74px!important;min-width:74px!important;max-width:74px!important;padding:1px 2px!important}
-.portfolio-status-pill{min-height:24px!important;padding:2px 2px!important;gap:1px!important;border-radius:5px!important;font-size:7px!important;line-height:1!important}
-.portfolio-status-pill strong{font-size:8px!important}.portfolio-status-pill small{max-width:68px!important;font-size:6.5px!important}
+/* Main ledger compact columns — shrink horizontal width while keeping normal row height/readability. */
+.sheet-wrap{width:calc(100% - 12px)!important;max-width:calc(100% - 12px)!important;margin-left:6px!important;margin-right:6px!important}
+.grid-viewport{overflow:auto!important}
+.sheet-grid{width:max-content!important;min-width:100%!important;table-layout:auto!important}
+
+/* Let columns become narrower than the original 104px defaults. */
+.sheet-grid thead th{min-width:0!important}
+.sheet-grid td input{min-width:0!important;padding-left:4px!important;padding-right:4px!important}
+.sheet-grid td input[type=number]{padding-left:3px!important;padding-right:3px!important}
+.sort-button{padding-left:4px!important;padding-right:4px!important}
+.sheet-grid thead th i{margin-left:2px!important}
+
+/* Default numeric / investor columns. */
+.sheet-grid col[data-column-key]{width:52px}
+.sheet-grid thead th.investor-col{min-width:46px!important;width:46px!important}
+.sheet-grid td.investor-cell{min-width:46px!important}
+
+/* Tight widths by field. */
+.sheet-grid col[data-column-key^="sheet:0:"]{width:32px!important}
+.sheet-grid col[data-column-key$=":日期"]{width:82px!important}
+.sheet-grid col[data-column-key$=":起租案名"]{width:76px!important}
+.sheet-grid col[data-column-key$=":案源"]{width:54px!important}
+.sheet-grid col[data-column-key$=":撥款人"]{width:54px!important}
+.sheet-grid col[data-column-key$=":案件金額"]{width:62px!important}
+.sheet-grid col[data-column-key$=":參與總額"]{width:62px!important}
+.sheet-grid col[data-column-key$=":週期"]{width:42px!important}
+.sheet-grid col[data-column-key$=":最近結算日"]{width:82px!important}
+.sheet-grid col[data-column-key$=":收益"],
+.sheet-grid col[data-column-key$=":收益率"],
+.sheet-grid col[data-column-key$=":原始收益率"]{width:48px!important}
+.sheet-grid col[data-column-key$=":仲介費"]{width:50px!important}
+.sheet-grid col[data-column-key$=":公司仲介費"],
+.sheet-grid col[data-column-key$=":個人仲介費"]{width:58px!important}
+.sheet-grid col[data-column-key$=":備註"]{width:84px!important}
+
+/* Inserted status column is also narrow, but still has room for unpaid names. */
+.sheet-grid .portfolio-status-head,
+.sheet-grid .portfolio-status-cell{width:66px!important;min-width:66px!important;max-width:66px!important}
+.sheet-grid col.portfolio-status-col{width:66px!important}
+.portfolio-status-pill{padding-left:2px!important;padding-right:2px!important}
+.portfolio-status-pill small{max-width:60px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+
+/* Original sheet utility columns. */
+.sheet-grid .row-no{width:32px!important;min-width:32px!important}
+.status-head,.status-cell{width:58px!important;min-width:58px!important}
+.delete-cell{width:34px!important;min-width:34px!important}
+.notes-cell input{min-width:0!important;width:84px!important}
+
+/* Do not let secondary broker text increase the project-name column width. */
 .portfolio-broker-mini{display:none!important}
-.sheet-grid td:has(.portfolio-broker-mini){height:28px!important}
-.notes-cell input{min-width:0!important;width:98px!important;font-size:8px!important}
-.status-head,.status-cell{width:58px!important;min-width:58px!important}.bad-debt-chip{height:21px!important;padding:0 5px!important;font-size:8px!important}
-.delete-cell{width:30px!important;min-width:30px!important}.delete-cell button{width:23px!important;height:23px!important;font-size:12px!important}
-.sheet-pagination{min-height:32px!important;padding:3px 7px!important;font-size:8px!important}.sheet-pagination b{min-width:42px!important}.sheet-pagination button,.bad-debt-pagination button{height:23px!important;padding:0 6px!important;font-size:8px!important}
-.month-tab-track{gap:2px!important;padding:5px 6px 0!important}.month-tab-track button,.month-tab-actions button{height:27px!important;padding:0 7px!important;font-size:9px!important}.month-tab-track b{margin-left:3px!important;padding:1px 4px!important;font-size:7px!important}.month-tab-actions{gap:2px!important;padding:5px 6px 0 2px!important}
-.sheet-hint{padding:5px 8px!important;font-size:9px!important;line-height:1.25!important}
-@media(max-width:900px){.sheet-wrap{width:calc(100% - 6px)!important;max-width:calc(100% - 6px)!important;margin-left:3px!important;margin-right:3px!important}.sheet-grid thead th{min-width:50px!important}.sheet-grid td input{font-size:8.5px!important}.sheet-grid .portfolio-status-head,.sheet-grid .portfolio-status-cell{width:68px!important;min-width:68px!important;max-width:68px!important}.sheet-grid col.portfolio-status-col{width:68px!important}.sheet-grid .row-no{left:0!important}.portfolio-status-pill small{max-width:62px!important}}
+
+/* Keep % suffix compact. */
+.sheet-grid td.has-suffix input{padding-right:15px!important}
+.sheet-grid td em{right:4px!important}
+
+/* When actively editing, allow the input to float wider instead of hiding the value. */
+.sheet-grid tbody td{overflow:visible!important}
+.sheet-grid td input:focus{
+  position:relative!important;
+  z-index:20!important;
+  width:max(100%,130px)!important;
+  min-width:130px!important;
+  background:#fff!important;
+  box-shadow:inset 0 0 0 2px var(--blue),0 4px 14px rgba(15,35,60,.14)!important;
+}
+.sheet-grid td input[type=date]:focus{width:max(100%,138px)!important;min-width:138px!important}
+.sheet-grid td input[type=number]:focus{width:max(100%,108px)!important;min-width:108px!important}
+
+@media(max-width:900px){
+  .sheet-wrap{width:calc(100% - 6px)!important;max-width:calc(100% - 6px)!important;margin-left:3px!important;margin-right:3px!important}
+  .sheet-grid col[data-column-key]{width:48px}
+  .sheet-grid col[data-column-key$=":起租案名"]{width:70px!important}
+  .sheet-grid col[data-column-key$=":案源"],.sheet-grid col[data-column-key$=":撥款人"]{width:50px!important}
+  .sheet-grid col[data-column-key$=":案件金額"],.sheet-grid col[data-column-key$=":參與總額"]{width:58px!important}
+  .sheet-grid .portfolio-status-head,.sheet-grid .portfolio-status-cell{width:62px!important;min-width:62px!important;max-width:62px!important}
+  .sheet-grid col.portfolio-status-col{width:62px!important}
+  .portfolio-status-pill small{max-width:56px!important}
+}
